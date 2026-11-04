@@ -3,7 +3,7 @@
 单文件 PyQt6。抠像全部调用 build/keyer.py 的 key_frame()，生成调用 build/build_frames.py 的
 build_clip()；本文件不复制任何抠像逻辑。
 """
-import json, os, re, sys, time, traceback
+import json, os, re, shutil, sys, time, traceback
 import numpy as np
 from PIL import Image
 from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal
@@ -11,7 +11,8 @@ from PyQt6.QtGui import QImage, QPixmap, QPainter, QColor
 from PyQt6.QtWidgets import (QApplication, QWidget, QLabel, QListWidget, QListWidgetItem,
                              QPushButton, QHBoxLayout, QVBoxLayout, QSlider, QDoubleSpinBox,
                              QComboBox, QSpinBox, QPlainTextEdit, QProgressBar, QSplitter,
-                             QFileDialog, QSizePolicy, QCheckBox, QLineEdit, QInputDialog)
+                             QFileDialog, QSizePolicy, QCheckBox, QLineEdit, QInputDialog,
+                             QMessageBox)
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(BASE)
@@ -430,10 +431,13 @@ class Workshop(QWidget):
                 self.frame_sld.setValue(len(v["frames"]) // 2)
                 self._last_row = row
             self.frame_sld.blockSignals(False)
-            self.render()
         except Exception as e:
-            self.log("打不开这个视频：%s" % e)
+            msg = "打不开这个视频：\n%s\n\n常见原因：文件被占用/损坏、不是视频、或 ffmpeg 抽不出帧。" % e
+            self.log(msg)
             self.lb_info.setText("读取出错，换一个文件试试")
+            QMessageBox.warning(self, "视频打不开", msg)
+            return
+        self.render()
 
     # ---- 预览 ----
     def cur(self):
@@ -492,6 +496,7 @@ class Workshop(QWidget):
         self.raw_rgb = raw
         p = self.params()
         mode = self.view_mode.currentIndex()
+        note = ""
         if mode == 0:
             out = raw.convert("RGBA")
         else:
@@ -504,10 +509,14 @@ class Workshop(QWidget):
                 out = Image.fromarray(a, "L").convert("RGB").convert("RGBA")
             else:
                 out = rgba
+            bg = float((np.asarray(rgba)[:, :, 3] < 8).mean())
+            note = "· 透明 %.0f%%" % (bg * 100)
+            if bg < 0.25:
+                note += " ⚠ 背景可能没抠净：确认是纯绿背景，或调色相/饱和度"
         self.canvas.set_image(pil_to_pixmap(out))
         dt = (time.monotonic() - t0) * 1000
-        self.lb_perf.setText("%s %.0f ms · %.1f fps（预览 %d 长边）"
-                             % ("快速" if fast else "完整", dt, 1000.0 / dt, lim))
+        self.lb_perf.setText("%s %.0f ms · %.1f fps（预览 %d 长边）%s"
+                             % ("快速" if fast else "完整", dt, 1000.0 / dt, lim, note))
         self.lb_frame.setText("%d / %d" % (i + 1, len(v["frames"])))
         self.impact_timer.start(250)
 
@@ -530,8 +539,12 @@ class Workshop(QWidget):
               np.where(mx == g, (b - r) / d + 2, (r - g) / d + 4)) * 60
         pick = sat >= np.percentile(sat, 60)          # 只看四角里较饱和的那批像素
         href = float(np.median(hue[pick]))
+        sat_med = float(np.median(sat[pick]))
         self.rows["hue_ref"].set_value(href)
-        self.log("四角背景：色相 %.1f 度，饱和度中位数 %.2f" % (href, float(np.median(sat[pick]))))
+        self.log("四角背景：色相 %.1f 度，饱和度中位数 %.2f" % (href, sat_med))
+        if sat_med < 0.2:
+            self.log("⚠ 四角不够绿（饱和度 %.2f）：背景可能不纯/不是纯绿幕，"
+                     "可以手动拖色相窗，或切到 alpha 视图确认边框是否干净" % sat_med)
         self.schedule_render()
 
     # ---- 预设 ----
@@ -586,6 +599,14 @@ class Workshop(QWidget):
             self.log("clipId 只能用字母/数字/下划线/短横线：%r" % cid)
             return
         v["cid"] = cid
+        free = shutil.disk_usage(ROOT).free
+        if free < 300 * 1024 * 1024:
+            self.log("⚠ 磁盘只剩 %.0f MB，可能不够写 %d 帧；先清点空间再生成"
+                     % (free / 1e6, len(v["frames"])))
+            if QMessageBox.question(self, "磁盘空间不足",
+                                    "剩余 %.0f MB，可能不够。仍要继续吗？" % (free / 1e6)) \
+                    != QMessageBox.StandardButton.Yes:
+                return
         spec = {"id": v["cid"], "video": v["path"], "params": self.params(),
                 "fps": self.sp_fps.value(), "width": self.sp_w.value(),
                 "fmt": self.cb_fmt.currentText(), "quality": self.sp_q.value()}
