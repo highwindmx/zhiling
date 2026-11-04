@@ -1,0 +1,67 @@
+{
+  "canvas": {
+    "w": 576,
+    "h": 530,
+    "src_w": 826,
+    "src_h": 760,
+    "crop": [
+      284,
+      0,
+      1110,
+      720
+    ]
+  },
+  "clips": {
+    "idle": {
+      "dir": "frames_idle",
+      "fps": 24,
+      "count": 96,
+      "foot": [
+        414,
+        759
+      ],
+      "source": "jimeng-2026-11-04-5883-帮我生成桌面桌宠，绿幕背景，方便进行透明视频转码.mp4",
+      "keyer": {
+        "hue_in": "18",
+        "hue_out": "36",
+        "sat_lo": "0.1",
+        "sat_hi": "0.16",
+        "erode": "1",
+        "blur": "1.0",
+        "keep_frac": "1.0",
+        "floor": "0.16",
+        "despill": "0.6"
+      }
+    },
+    "action": {
+      "dir": "frames_action",
+      "fps": 24,
+      "count": 121,
+      "scale": 1.26,
+      "offset": [
+        -364,
+        -50
+      ],
+      "foot": [
+        414,
+        759
+      ],
+      "source": "HappyHorse 1.1_1793774480874.mp4",
+      "keyer": {
+        "hue_ref": "148.0",
+        "hue_in": "20.0",
+        "hue_out": "34.0",
+        "sat_lo": "0.3",
+        "sat_hi": "0.55",
+        "val_lo": "0.3",
+        "val_hi": "0.45",
+        "erode": "1",
+        "blur": "1.0",
+        "floor": "0.16",
+        "despill": "0.75",
+        "keep_frac": "1.0",
+        "watermarks": "[(0, 0, 230, 90), (1080, 630, 1280, 720)]"
+      }
+    }
+  }
+}

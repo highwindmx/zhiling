@@ -1,0 +1,7 @@
+PyQt6>=6.6
+
+# 仅重建帧序列（build\build_frames.py）时需要，运行桌宠本身不需要：
+# pillow
+# numpy
+# scipy
+# imageio-ffmpeg
