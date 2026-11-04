@@ -7,4 +7,10 @@
 
 用法、截图、帧序列重建方式和已知限制都在 **[deskpet-mini/README.md](deskpet-mini/README.md)**。
 
-> 仓库**不含** 63.9MB 的透明帧序列（`frames_idle/`、`frames_action/`，已被 `.gitignore` 排除）。首次运行请按 README 执行 `python build\build_frames.py`，从 `assets/` 里的两段源视频重建。
+> 仓库**不含**透明帧序列（`frames_idle/`、`frames_action/`，已被 `.gitignore` 排除）：重建后是 WebP，约 9.4MB（PNG 则为 63.9MB）。首次运行请按 README 执行 `python build\build_frames.py`，从 `assets/` 里的两段源视频重建。
+
+## License
+
+代码部分采用 **Apache License 2.0**（全文见 [LICENSE](LICENSE)）：可自由使用、修改、商用，需保留版权声明与许可声明。
+
+`deskpet-mini/assets/` 下的两段视频为 AI 生成素材，版权归生成平台/账号方所有，不在上述代码许可范围内，商用或再分发前请自行核对平台条款。

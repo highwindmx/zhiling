@@ -27,7 +27,23 @@ FADE_MS = 250         # 两段之间的交叉淡化时长
 
 META = None
 CLIPS = {}
+EXTS = {}          # 每段实际使用的帧后缀："webp" 或 "png"
 LOG_PATH = None
+
+
+def resolve_ext(clip):
+    """优先用 webp（体积约为 png 的 1/7），目录里没有就回退 png。"""
+    m = CLIPS[clip]
+    d = os.path.join(ROOT, m["dir"])
+    for ext in ([m["format"]] if m.get("format") else []) + ["webp", "png"]:
+        if os.path.exists(os.path.join(d, f"f0000.{ext}")):
+            return ext
+    return m.get("format") or "png"
+
+
+def frame_file(clip, idx):
+    ext = EXTS.get(clip) or EXTS.setdefault(clip, resolve_ext(clip))
+    return os.path.join(ROOT, CLIPS[clip]["dir"], f"f{idx:04d}.{ext}")
 
 
 def log(msg):
@@ -100,7 +116,7 @@ class Loader(threading.Thread):
                     self.cond.wait()
                 clip, idx = self.jobs.popleft()
                 w, h = self._size
-            path = os.path.join(ROOT, CLIPS[clip]["dir"], f"f{idx:04d}.png")
+            path = frame_file(clip, idx)
             img = QImage(path)
             if w and img.width() != w:
                 img = img.scaled(w, h, Qt.AspectRatioMode.IgnoreAspectRatio,
@@ -150,7 +166,7 @@ class Pet(QWidget):
 
     def _load_now(self, clip, idx):
         w, h = self._size()
-        img = QImage(os.path.join(ROOT, CLIPS[clip]["dir"], f"f{idx:04d}.png"))
+        img = QImage(frame_file(clip, idx))
         if img.isNull():
             raise SystemExit(f"缺少帧文件: {clip} #{idx}")
         return img.scaled(w, h, Qt.AspectRatioMode.IgnoreAspectRatio,

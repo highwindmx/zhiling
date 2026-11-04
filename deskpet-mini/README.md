@@ -83,8 +83,8 @@ zhiling/
 │  │  ├─ measure.py         干净进程下的启动耗时/内存
 │  │  └─ test_all.py        端到端自测（双击、拖动、切档）
 │  ├─ docs/screenshots/     效果截图（README 用）
-│  ├─ frames_idle/          ← 生成产物，不入库（96 帧 / 29.6MB）
-│  └─ frames_action/        ← 生成产物，不入库（121 帧 / 31.3MB）
+│  ├─ frames_idle/          ← 生成产物，不入库（96 帧 / 4.4MB）
+│  └─ frames_action/        ← 生成产物，不入库（121 帧 / 4.9MB）
 └─ deskpet-demo/            早期网页原型（浏览器里跑的 canvas 版）
 ```
 
@@ -103,7 +103,22 @@ zhiling/
 | `ACT_SCALE` / `FOOT` | 动作段相对待机段的缩放，以及两段共用的脚底锚点（保证双击时人物不"跳"） |
 | `CROP` / `OUT_W` / `CANVAS_H` | 待机段的裁切框、输出宽度、共同画布高度 |
 
-产物：`frames_idle\f0000..f0095.png`、`frames_action\f0000..f0120.png`（576×530 的 RGBA），外加刷新 `meta.json`。运行时只读这些 PNG，不再碰视频。
+产物：`frames_idle\f0000..f0095.webp`、`frames_action\f0000..f0120.webp`（576×530，带 alpha），外加刷新 `meta.json`。运行时只读这些帧文件，不再碰视频。
+
+### 输出格式与体积
+
+默认输出 **WebP（有损 q80 + alpha）**，体积约为 PNG 的 1/7。217 帧的 WebP 编码本身约 25 秒（单帧 110~130ms，`method=6`），抠像耗时另算：
+
+| 格式 | 帧总体积 | 相对 PNG | 说明 |
+|---|---|---|---|
+| PNG（旧默认） | 63.90 MB | 100% | 无损，但半透明渐变让 PNG 几乎压不动，平均 300KB/帧 |
+| **WebP q90** | 12.03 MB | 18.8% | 几乎无损 |
+| **WebP q80（默认）** | **9.36 MB** | **14.6%** | 576px 下与 PNG 肉眼无差 |
+| WebP q60 | 7.52 MB | 11.8% | 深色大面积区域能看到轻微色块 |
+
+q80 的判断依据：同帧在 576px（磁盘原尺寸 1:1）、384px（大档）、192px（中档）三档显示宽度下与 PNG 对比，看不出差别；PSNR 39.3~41.9 dB（29dB 以下才明显）。想调就改 `build\build_frames.py` 顶部的 `OUT_FMT`（可改回 `"png"`）与 `WEBP_Q`。
+
+**注意**：WebP 只省磁盘，不省内存——解码后同样是显示尺寸的 QImage，工作集与读 PNG 基本一样（实测 192px 53.3→54.0 MB，384px 63.9→65.9 MB）。播放器会优先找 `frames_*\f0000.webp`，没有就自动回退读 `.png`，老目录直接能用。
 
 换角色/换视频的顺序建议：先跑 `build\compare_clips.py` 看新素材的绿幕色相和人物高度是否和现有一致，再调 `ACT_P`，用 `build\key_test_action.py` 出单帧试色卡确认边缘，最后 `build_frames.py` 全量。
 
@@ -139,6 +154,6 @@ zhiling/
 - **只测了 Windows**：依赖 PyQt6 的 `FramelessWindowHint` + `WA_TranslucentBackground` 组合，macOS/Linux 未验证。
 - **没有托盘图标、开关机自启**，退出只能右键菜单或 `Esc`。
 
-## 许可说明
+## License
 
-代码部分可自由阅读、修改、用于学习。视频素材版权见上一节，不在代码许可范围内。
+代码部分采用 **Apache License 2.0**（全文见仓库根目录 [LICENSE](../LICENSE)）：可自由使用、修改、商用，需保留版权声明与许可声明。上面"素材来源"里的两段视频不在代码许可范围内。
