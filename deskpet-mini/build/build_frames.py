@@ -208,20 +208,21 @@ def main():
     save_clip(canvas, os.path.join(ROOT, "frames_action"), (cw, ch))
     print("输出尺寸", w, "x", h)
 
-    meta = {
-        "canvas": {"w": w, "h": h, "src_w": cw, "src_h": ch, "crop": list(CROP)},
-        "clips": {
-            "idle": {"dir": "frames_idle", "fps": 24, "count": len(idle_canvas), "format": OUT_FMT,
+    # 合并写入：只更新 idle / action 两条，别把工坊或 --spec 生成的其它 clip 抹掉
+    meta_path = os.path.join(ROOT, "meta.json")
+    meta = json.load(open(meta_path, encoding="utf-8")) if os.path.exists(meta_path) else {}
+    meta.setdefault("canvas", {"w": w, "h": h, "src_w": cw, "src_h": ch, "crop": list(CROP)})
+    clips = meta.setdefault("clips", {})
+    clips["idle"] = {"dir": "frames_idle", "fps": 24, "count": len(idle_canvas), "format": OUT_FMT,
                      "foot": list(FOOT), "source": os.path.basename(IDLE_SRC),
-                     "keyer": {k: str(v) for k, v in IDLE_P.items()}},
-            "action": {"dir": "frames_action", "fps": 24, "count": len(canvas), "format": OUT_FMT,
-                       "scale": ACT_SCALE, "offset": [round(FOOT[0] - 617.5 * ACT_SCALE),
-                                                      round(FOOT[1] - 642 * ACT_SCALE)],
+                     "keyer": {k: str(v) for k, v in IDLE_P.items()}}
+    clips["action"] = {"dir": "frames_action", "fps": 24, "count": len(canvas), "format": OUT_FMT,
+                       "scale": ACT_SCALE,
+                       "offset": [round(FOOT[0] - 617.5 * ACT_SCALE),
+                                  round(FOOT[1] - 642 * ACT_SCALE)],
                        "foot": list(FOOT), "source": os.path.basename(ACT_SRC),
-                       "keyer": {k: str(v) for k, v in ACT_P.items()}},
-        },
-    }
-    with open(os.path.join(ROOT, "meta.json"), "w", encoding="utf-8") as f:
+                       "keyer": {k: str(v) for k, v in ACT_P.items()}}
+    with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(meta, f, ensure_ascii=False, indent=2)
 
     total = sum(os.path.getsize(os.path.join(ROOT, d, x)) for d in ("frames_idle", "frames_action")
