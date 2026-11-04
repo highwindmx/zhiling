@@ -31,7 +31,7 @@
 
 ## 快速开始
 
-前置：Windows 10/11 + Python 3.10 以上。仓库里**不含帧序列**（四段共约 18.7MB，故意不入库），第一次跑要先重建，大约一两分钟。
+前置：Windows 10/11 + Python 3.10 以上。仓库里**不含帧序列**（四段共约 19.6MB，故意不入库），第一次跑要先重建，大约一两分钟。
 
 ```bat
 cd deskpet-mini
@@ -97,7 +97,7 @@ zhiling/
 │  ├─ docs/screenshots/     效果截图（README 用）
 │  ├─ frames_idle/          ← 生成产物，不入库（96 帧 / 4.4MB）
 │  ├─ frames_action/        ← 生成产物，不入库（121 帧 / 4.9MB）
-│  ├─ frames_action2/       ← 打字（107 帧 / 4.4MB）
+│  ├─ frames_action2/       ← 打字（107 帧 / 5.3MB）
 │  └─ frames_action3/       ← 抱臂（107 帧 / 4.9MB）
 └─ deskpet-demo/            早期网页原型（浏览器里跑的 canvas 版）
 ```
@@ -128,7 +128,7 @@ zhiling/
 
 ### 输出格式与体积
 
-默认输出 **WebP（有损 q80 + alpha）**，体积约为 PNG 的 1/7。217 帧的 WebP 编码本身约 25 秒（单帧 110~130ms，`method=6`），抠像耗时另算：
+默认输出 **WebP（有损 q80 + alpha）**，体积约为 PNG 的 1/7。旧两段 217 帧的 WebP 编码本身约 25 秒（单帧 110~130ms，`method=6`），抠像耗时另算：
 
 | 格式 | 帧总体积 | 相对 PNG | 说明 |
 |---|---|---|---|
