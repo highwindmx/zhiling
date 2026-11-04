@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "clips": [
+    {
+      "id": "idle",
+      "name": "待机",
+      "type": "idle",
+      "loop": true,
+      "priority": 0,
+      "dir": "frames_idle"
+    },
+    {
+      "id": "action",
+      "name": "挥手",
+      "type": "action",
+      "loop": false,
+      "priority": 1,
+      "dir": "frames_action"
+    },
+    {
+      "id": "action2",
+      "name": "打字",
+      "type": "action",
+      "loop": false,
+      "priority": 2,
+      "dir": "frames_action2"
+    },
+    {
+      "id": "action3",
+      "name": "抱臂",
+      "type": "action",
+      "loop": false,
+      "priority": 3,
+      "dir": "frames_action3"
+    }
+  ]
+}

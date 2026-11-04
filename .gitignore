@@ -16,8 +16,10 @@ deskpet-mini/frames_action/
 deskpet-mini/build/f24/
 deskpet-mini/build/action_raw/
 deskpet-mini/build/raw_frames/
+deskpet-mini/build/raw_*/
 deskpet-mini/build/test_frames/
 deskpet-mini/build/webp_test/
+deskpet-mini/build/judge/
 deskpet-mini/build/*.png
 deskpet-mini/build/*.log
 

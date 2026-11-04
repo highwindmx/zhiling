@@ -28,7 +28,37 @@ FADE_MS = 250         # 两段之间的交叉淡化时长
 META = None
 CLIPS = {}
 EXTS = {}          # 每段实际使用的帧后缀："webp" 或 "png"
+ACTIONS = []       # 动作 clip 的 id，按优先级排序
+IDLE_ID = "idle"
 LOG_PATH = None
+
+
+def load_clips():
+    """clips.json 管顺序/类型/名字；meta.json 管目录、帧数、fps、格式。缺 clips.json 时退回旧行为。"""
+    global IDLE_ID
+    meta_clips = META.get("clips", {})
+    path = os.path.join(ROOT, "clips.json")
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as f:
+            arr = json.load(f).get("clips", [])
+    else:
+        arr = [{"id": k, "type": "idle" if k == "idle" else "action",
+                "loop": k == "idle", "name": k} for k in meta_clips]
+    out = {}
+    for e in arr:
+        cid = e.get("id")
+        if not cid:
+            continue
+        m = meta_clips.get(cid, {})
+        out[cid] = {"dir": m.get("dir", e.get("dir", "frames_" + cid)),
+                    "fps": m.get("fps", 24), "count": m.get("count", 1),
+                    "format": m.get("format"), "name": e.get("name", cid),
+                    "type": e.get("type", "action"), "loop": bool(e.get("loop", False)),
+                    "priority": e.get("priority", 99)}
+    idd = [c for c in out if out[c]["type"] == "idle"]
+    IDLE_ID = idd[0] if idd else next(iter(out))
+    return out, sorted([c for c in out if out[c]["type"] != "idle"],
+                       key=lambda c: out[c]["priority"])
 
 
 def resolve_ext(clip):
@@ -142,18 +172,19 @@ class Pet(QWidget):
         self.loader = Loader()
         self.loader.start()
 
-        self.clip = "idle"
+        self.clip = IDLE_ID
         self.idx = 0
+        self.action_cursor = 0
         self.idle_resume = 1
         self.tier_name = "中"
         self.prev_img = None
         self.fade_start = None
         self.drag_pos = None
-        self.fps = CLIPS["idle"]["fps"]
+        self.fps = CLIPS[IDLE_ID]["fps"]
 
         # 只同步读第 1 帧：窗口立刻可见，不等缓存预热
         self.loader.reset(self._size())
-        self.current_img = self._load_now("idle", 0)
+        self.current_img = self._load_now(IDLE_ID, 0)
         self._prefetch()
 
         self.timer = QTimer(self)
@@ -186,8 +217,8 @@ class Pet(QWidget):
 
     def tick(self):
         n = CLIPS[self.clip]["count"]
-        if self.clip == "action" and self.idx >= n - 1:
-            self._switch("idle")
+        if not CLIPS[self.clip]["loop"] and self.idx >= n - 1:
+            self._switch(IDLE_ID)
         else:
             self.idx = (self.idx + 1) % n
             self.current_img = self.loader.get(self.clip, self.idx) or self.current_img
@@ -198,15 +229,28 @@ class Pet(QWidget):
     def _switch(self, clip):
         self.prev_img = self.current_img
         self.fade_start = time.monotonic()
-        if clip == "action":
-            self.idle_resume = (self.idx + 1) % CLIPS["idle"]["count"]
-            self.idx = 0
-        else:
+        if clip == IDLE_ID:
             self.idx = self.idle_resume
+        else:
+            self.idle_resume = (self.idx + 1) % CLIPS[IDLE_ID]["count"]
+            self.idx = 0
         self.clip = clip
         self.loader.reset(self._size())
         self.current_img = self._load_now(clip, self.idx)
         self._prefetch()
+
+    def play_action(self, cid):
+        """播指定动作；播完 tick() 会自动回待机。"""
+        if cid in CLIPS:
+            self._switch(cid)
+            log("action_start_ms=%.0f clip=%s" % ((time.monotonic() - T0) * 1000, cid))
+
+    def play_next_action(self):
+        """双击：按 clips.json 的优先级依次播放，播到最后一个再从头。"""
+        if not ACTIONS:
+            return
+        self.play_action(ACTIONS[self.action_cursor % len(ACTIONS)])
+        self.action_cursor = (self.action_cursor + 1) % len(ACTIONS)
 
     # ---- 绘制 ----
     def paintEvent(self, e):
@@ -239,12 +283,11 @@ class Pet(QWidget):
         e.accept()
 
     def mouseDoubleClickEvent(self, e):
-        if e.button() == Qt.MouseButton.LeftButton and self.clip == "idle":
-            self._switch("action")
-            log("action_start_ms=%.0f" % ((time.monotonic() - T0) * 1000))
+        if e.button() == Qt.MouseButton.LeftButton and self.clip == IDLE_ID:
+            self.play_next_action()
         e.accept()
 
-    def contextMenuEvent(self, e):
+    def _build_menu(self):
         menu = QMenu(self)
         group = QActionGroup(self)
         for name in ("小", "中", "大"):
@@ -254,11 +297,20 @@ class Pet(QWidget):
             act.triggered.connect(lambda _, n=name: self.set_tier(n))
             group.addAction(act)
             menu.addAction(act)
+        if ACTIONS:
+            menu.addSeparator()
+            for cid in ACTIONS:
+                act = QAction("动作：" + CLIPS[cid]["name"], self)
+                act.triggered.connect(lambda _, c=cid: self.play_action(c))
+                menu.addAction(act)
         menu.addSeparator()
         quit_act = QAction("退出", self)
         quit_act.triggered.connect(QApplication.quit)
         menu.addAction(quit_act)
-        menu.exec(e.globalPos())
+        return menu
+
+    def contextMenuEvent(self, e):
+        self._build_menu().exec(e.globalPos())
 
     def set_tier(self, name):
         self.tier_name = name
@@ -272,15 +324,16 @@ class Pet(QWidget):
 
 
 def main():
-    global META, CLIPS, LOG_PATH
+    global META, CLIPS, ACTIONS, LOG_PATH
     ap = argparse.ArgumentParser()
     ap.add_argument("--width", type=int, default=0, help="宠物宽度(像素)，默认中档=屏幕宽 15%%")
     ap.add_argument("--log", default="", help="把启动/动作时间点写到这个文件，用于测时")
+    ap.add_argument("--clip", default="", help="启动时直接播某个动作（调试用）")
     args = ap.parse_args()
     LOG_PATH = args.log or None
 
     META = json.load(open(os.path.join(ROOT, "meta.json"), encoding="utf-8"))
-    CLIPS = META["clips"]
+    CLIPS, ACTIONS = load_clips()
 
     app = QApplication(sys.argv)
     screen = app.primaryScreen().availableGeometry()

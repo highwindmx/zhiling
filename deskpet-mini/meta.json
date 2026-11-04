@@ -62,6 +62,68 @@
         "keep_frac": "1.0",
         "watermarks": "[(0, 0, 230, 90), (1080, 630, 1280, 720)]"
       }
+    },
+    "action2": {
+      "dir": "frames_action2",
+      "fps": 24,
+      "count": 107,
+      "format": "webp",
+      "scale": 0.7734,
+      "offset": [
+        -116,
+        -32
+      ],
+      "foot": [
+        288,
+        528
+      ],
+      "source": "5784240f-2581-434a-a458-26029006b48b_1b38c445-6673-4536-a32d-89cf97f5615d_海螺_视频_@图片1请基于这个大_574308429835190278.mp4",
+      "keyer": {
+        "hue_in": "20.0",
+        "hue_out": "34.0",
+        "sat_lo": "0.3",
+        "sat_hi": "0.55",
+        "val_lo": "0.3",
+        "val_hi": "0.45",
+        "erode": "1",
+        "blur": "1.0",
+        "floor": "0.16",
+        "despill": "0.75",
+        "keep_frac": "1.0",
+        "watermarks": "[[610, 682, 1024, 745]]",
+        "hue_ref": "136.4"
+      }
+    },
+    "action3": {
+      "dir": "frames_action3",
+      "fps": 24,
+      "count": 107,
+      "format": "webp",
+      "scale": 0.6942,
+      "offset": [
+        -92,
+        1
+      ],
+      "foot": [
+        288,
+        528
+      ],
+      "source": "cf5fb5c2-7391-457d-823c-514d049ce044_74e7c8b5-0a5a-4392-b682-265945b04354_海螺_视频_@图片1请基于这个大_574308517059928070.mp4",
+      "keyer": {
+        "hue_in": "20.0",
+        "hue_out": "34.0",
+        "sat_lo": "0.3",
+        "sat_hi": "0.55",
+        "val_lo": "0.3",
+        "val_hi": "0.45",
+        "erode": "1",
+        "blur": "1.0",
+        "floor": "0.16",
+        "despill": "0.75",
+        "keep_frac": "1.0",
+        "watermarks": "[[610, 682, 1024, 745]]",
+        "hue_ref": "124.6"
+      }
     }
   }
 }

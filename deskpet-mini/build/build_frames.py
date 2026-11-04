@@ -87,6 +87,96 @@ def save_clip(frames, out_dir, canvas_size):
     return w, h
 
 
+MARGIN = 0.985                   # 自动贴合画布时留的边距
+
+
+def extract_frames(src, dst, fps):
+    os.makedirs(dst, exist_ok=True)
+    if glob.glob(os.path.join(dst, "*.png")):
+        return sorted(glob.glob(os.path.join(dst, "*.png")))
+    subprocess.run([ff, "-hide_banner", "-loglevel", "error", "-y", "-i", src,
+                    "-vf", "fps=%d" % fps, "-pix_fmt", "rgb24",
+                    os.path.join(dst, "r%04d.png")], check=True)
+    return sorted(glob.glob(os.path.join(dst, "*.png")))
+
+
+def build_clip(spec, log=print):
+    """按 spec 生成一个新 clip：抽帧 → 抠像 → 自动缩放贴合画布 → 存盘 → 写 meta。
+
+    spec 字段：id, video, params(dict), fps?, width?, fmt?, quality?
+    画布比例固定 826:760（与 frames_idle/frames_action 一致）。
+    """
+    cid = spec["id"]
+    src = spec["video"]
+    params = dict(spec["params"])
+    fps = int(spec.get("fps", 24))
+    out_w = int(spec.get("width", OUT_W))
+    fmt = spec.get("fmt", OUT_FMT)
+    qual = int(spec.get("quality", WEBP_Q))
+    oh = round(out_w * CANVAS_H / (CROP[2] - CROP[0]))
+
+    raw_dir = os.path.join(BASE, "raw_" + cid)
+    files = extract_frames(src, raw_dir, fps)
+    if not files:
+        raise RuntimeError("抽帧为空：%s" % src)
+    log("抽到 %d 帧（%d fps）" % (len(files), fps))
+
+    boxes = []
+    for p in (files[0], files[len(files) // 2], files[-1]):
+        rgba = key_frame(np.asarray(Image.open(p).convert("RGB")), **params)
+        a = np.asarray(rgba)[:, :, 3]
+        ys, xs = np.where(a > 8)
+        if len(ys):
+            boxes.append([int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())])
+    if not boxes:
+        raise RuntimeError("抠像后没有前景，检查色相参考（日志里的背景色相）")
+    l = min(b[0] for b in boxes)
+    t = min(b[1] for b in boxes)
+    r = max(b[2] for b in boxes)
+    b = max(b[3] for b in boxes)
+    scale = min(out_w * MARGIN / (r - l + 1), oh * MARGIN / (b - t + 1))
+    ox = round((out_w - (r - l + 1) * scale) / 2 - l * scale)
+    oy = round(oh - 2 - b * scale)
+    log("主体框 %s，缩放 %.3f，偏移 %s" % ([l, t, r, b], scale, [ox, oy]))
+
+    out_dir = os.path.join(ROOT, "frames_" + cid)
+    os.makedirs(out_dir, exist_ok=True)
+    for f in glob.glob(os.path.join(out_dir, "*.png")) + glob.glob(os.path.join(out_dir, "*.webp")):
+        os.remove(f)
+    n = 0
+    for i, p in enumerate(files):
+        rgba = key_frame(np.asarray(Image.open(p).convert("RGB")), **params)
+        small = rgba.resize((max(1, round(rgba.width * scale)),
+                             max(1, round(rgba.height * scale))), Image.LANCZOS)
+        canvas = Image.new("RGBA", (out_w, oh), (0, 0, 0, 0))
+        canvas.alpha_composite(small, (ox, oy))
+        canvas = resize_rgba(canvas, (out_w, oh))
+        dst = os.path.join(out_dir, "f%04d.%s" % (n, fmt))
+        if fmt == "webp":
+            canvas.save(dst, "WEBP", quality=qual, method=6, alpha_quality=ALPHA_Q, exact=False)
+        else:
+            canvas.save(dst, optimize=True)
+        n += 1
+        if n % 20 == 0:
+            log("  %d/%d" % (n, len(files)))
+
+    meta_path = os.path.join(ROOT, "meta.json")
+    meta = json.load(open(meta_path, encoding="utf-8")) if os.path.exists(meta_path) else {}
+    meta.setdefault("canvas", {"w": out_w, "h": oh, "src_w": CROP[2] - CROP[0], "src_h": CANVAS_H})
+    foot = [round((l + r) / 2 * scale + ox), oh - 2]
+    meta.setdefault("clips", {})[cid] = {
+        "dir": "frames_" + cid, "fps": fps, "count": n, "format": fmt,
+        "scale": round(scale, 4), "offset": [ox, oy], "foot": foot,
+        "source": os.path.basename(src),
+        "keyer": {k: str(v) for k, v in params.items()},
+    }
+    with open(meta_path, "w", encoding="utf-8") as f:
+        json.dump(meta, f, ensure_ascii=False, indent=2)
+    total = sum(os.path.getsize(os.path.join(out_dir, x)) for x in os.listdir(out_dir))
+    log("frames_%s：%d 帧，%.2f MB，%dx%d" % (cid, n, total / 1e6, out_w, oh))
+    return {"id": cid, "count": n, "bytes": total, "width": out_w, "height": oh}
+
+
 def main():
     idle_files = extract(IDLE_SRC, IDLE_RAW, "r")
     act_files = extract(ACT_SRC, ACTION_RAW, "a")
@@ -140,5 +230,9 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) > 2 and sys.argv[1] == "--spec":
+        with open(sys.argv[2], encoding="utf-8") as f:
+            build_clip(json.load(f))
+    else:
+        main()
 
