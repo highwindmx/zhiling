@@ -11,7 +11,7 @@ from PyQt6.QtGui import QImage, QPixmap, QPainter, QColor
 from PyQt6.QtWidgets import (QApplication, QWidget, QLabel, QListWidget, QListWidgetItem,
                              QPushButton, QHBoxLayout, QVBoxLayout, QSlider, QDoubleSpinBox,
                              QComboBox, QSpinBox, QPlainTextEdit, QProgressBar, QSplitter,
-                             QFileDialog, QSizePolicy)
+                             QFileDialog, QSizePolicy, QCheckBox, QLineEdit, QInputDialog)
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(BASE)
@@ -20,7 +20,8 @@ from keyer import key_frame
 import build_frames
 
 EXTS = (".mp4", ".mov", ".webm", ".mkv", ".avi")
-PREVIEW_MAX = 640          # 预览最长边（半分辨率预览，生成时才用全分辨率）
+PREVIEW_MAX = 640         # 完整预览最长边
+PREVIEW_FAST = 320        # 拖动中用的快速预览最长边（面积约为完整的 1/4）
 DEBOUNCE_MS = 120
 
 # 暴露给界面的 7 个核心参数：key -> (名称, 下限, 上限, 默认值, tooltip)
@@ -30,12 +31,14 @@ PARAM_DEFS = [
     ("hue_in", "色相内", 0, 90, 20.0, "与背景色相差在这个角度以内 → 完全判为背景。"),
     ("hue_out", "色相外", 0, 120, 34.0, "超出这个角度 → 完全判为前景；两者之间是软过渡。"),
     ("sat_lo", "饱和度下限", 0, 1, 0.30, "饱和度低于此值的像素不算背景（避免吃掉角色灰白衣物）。"),
+    ("sat_hi", "饱和度上限", 0, 1, 0.55, "饱和度高于此值才“够绿”；与下限之间是软过渡。"),
     ("floor", "alpha 软地板", 0, 0.95, 0.16, "回收淡绿雾：alpha 低于此值直接归零。"),
     ("despill", "去溢色强度", 0, 1, 0.75, "削掉绿边（绿比红蓝高出的部分按此比例扣掉）。"),
     ("blur", "羽化", 0, 8, 1.0, "alpha 边缘高斯模糊半径（像素），越大边缘越柔。"),
 ]
-# 界面不暴露、沿用既有默认值的参数
-FIXED = dict(sat_hi=0.55, val_lo=0.30, val_hi=0.45, erode=1, keep_frac=1.0, watermarks=[])
+# 界面不暴露、沿用既有默认值的参数（keep_frac 由“只保留最大连通块”开关决定）
+FIXED = dict(val_lo=0.30, val_hi=0.45, erode=1, watermarks=[])
+PRESET_DIR = os.path.join(ROOT, "presets")
 
 
 def pil_to_pixmap(im):
@@ -136,6 +139,11 @@ class SliderRow(QWidget):
         lay.addWidget(lab)
         lay.addWidget(self.sld, 1)
         lay.addWidget(self.spb)
+        self.lb_fx = QLabel("—")            # 该参数能影响多少像素（低分辨率估算）
+        self.lb_fx.setFixedWidth(40)
+        self.lb_fx.setStyleSheet("color:#888")
+        self.lb_fx.setToolTip("把该参数往一侧推 12% 量程后，alpha 变化超过 6 的像素占比")
+        lay.addWidget(self.lb_fx)
         self.sld.valueChanged.connect(self._from_slider)
         self.spb.valueChanged.connect(self._from_spin)
         self.set_value(val)
@@ -198,8 +206,15 @@ class Workshop(QWidget):
         self.gen = None
         self.render_timer = QTimer(self)
         self.render_timer.setSingleShot(True)
-        self.render_timer.timeout.connect(self.render)
+        self.render_timer.timeout.connect(lambda: self.render(True))
+        self.full_timer = QTimer(self)        # 停手 400ms 后补一次完整分辨率预览
+        self.full_timer.setSingleShot(True)
+        self.full_timer.timeout.connect(lambda: self.render(False))
+        self.impact_timer = QTimer(self)      # 受影响像素统计比渲染更贵，单独再等 250ms
+        self.impact_timer.setSingleShot(True)
+        self.impact_timer.timeout.connect(self.compute_impact)
         self._build_ui()
+        self.refresh_presets()
 
     # ---- 界面 ----
     def _build_ui(self):
@@ -259,8 +274,19 @@ class Workshop(QWidget):
 
         # 右：参数
         right = QWidget()
+        right.setMinimumWidth(400)
         rv = QVBoxLayout(right)
         rv.addWidget(QLabel("抠像参数"))
+        pre_row = QHBoxLayout()
+        pre_row.addWidget(QLabel("预设"))
+        self.cb_preset = QComboBox()
+        self.cb_preset.setToolTip("选一个就载入它的参数；存为… 会把当前参数写进 presets\\*.json")
+        self.cb_preset.currentIndexChanged.connect(self.load_preset)
+        pre_row.addWidget(self.cb_preset, 1)
+        b_save = QPushButton("存为…")
+        b_save.clicked.connect(self.save_preset)
+        pre_row.addWidget(b_save)
+        rv.addLayout(pre_row)
         self.rows = {}
         for key, name, lo, hi, val, tip in PARAM_DEFS:
             r = SliderRow(name, lo, hi, val, tip)
@@ -270,9 +296,14 @@ class Workshop(QWidget):
         b_hue = QPushButton("取背景色（四角取样）")
         b_hue.clicked.connect(self.sample_hue)
         rv.addWidget(b_hue)
+        self.cb_keep = QCheckBox("只保留最大连通块")
+        self.cb_keep.setChecked(True)
+        self.cb_keep.setToolTip("开：只留最大的一块前景，气泡/碎边一并丢掉；关：保留全部碎片")
+        self.cb_keep.stateChanged.connect(self.schedule_render)
+        rv.addWidget(self.cb_keep)
         rv.addStretch(1)
         split.addWidget(right)
-        split.setSizes([240, 660, 380])
+        split.setSizes([240, 620, 420])
 
         # 底：输出设置 + 生成
         out_row = QHBoxLayout()
@@ -301,6 +332,37 @@ class Workshop(QWidget):
         out_row.addWidget(self.b_gen)
         out_row.addStretch(1)
         outer.addLayout(out_row)
+
+        reg_row = QHBoxLayout()
+        self.cb_reg = QCheckBox("登记到 clips.json")
+        self.cb_reg.setChecked(True)
+        self.cb_reg.setToolTip("生成成功后把这个 clip 写进 clips.json；重启宠物才生效")
+        reg_row.addWidget(self.cb_reg)
+        reg_row.addWidget(QLabel("clipId"))
+        self.ed_id = QLineEdit()
+        self.ed_id.setFixedWidth(150)
+        self.ed_id.setPlaceholderText("如 action3")
+        reg_row.addWidget(self.ed_id)
+        reg_row.addWidget(QLabel("显示名"))
+        self.ed_name = QLineEdit()
+        self.ed_name.setFixedWidth(150)
+        self.ed_name.setPlaceholderText("右键菜单里显示的名字")
+        reg_row.addWidget(self.ed_name)
+        reg_row.addWidget(QLabel("类型"))
+        self.cb_type = QComboBox()
+        self.cb_type.addItems(["action", "idle"])
+        reg_row.addWidget(self.cb_type)
+        self.cb_loop = QCheckBox("循环")
+        self.cb_loop.setToolTip("idle 必须循环；action 一般关掉（播完自动回待机）")
+        reg_row.addWidget(self.cb_loop)
+        reg_row.addWidget(QLabel("优先级"))
+        self.sp_prio = QSpinBox()
+        self.sp_prio.setRange(0, 99)
+        self.sp_prio.setValue(4)
+        self.sp_prio.setToolTip("双击时按这个从小到大依次播放动作")
+        reg_row.addWidget(self.sp_prio)
+        reg_row.addStretch(1)
+        outer.addLayout(reg_row)
 
         self.prog = QProgressBar()
         self.prog.setRange(0, 100)
@@ -346,6 +408,7 @@ class Workshop(QWidget):
         if row < 0 or row >= len(self.videos):
             return
         v = self.videos[row]
+        self.ed_id.setText(v["cid"])
         fps = self.sp_fps.value()
         try:
             if v["fps"] != fps or not v["frames"]:
@@ -387,21 +450,41 @@ class Workshop(QWidget):
             self.schedule_render()
 
     def schedule_render(self, *a):
-        self.render_timer.start(DEBOUNCE_MS)
+        self.render_timer.start(DEBOUNCE_MS)    # 拖动中先给快速预览
+        self.full_timer.start(400)              # 停手后再渲染完整预览
 
     def params(self):
         p = {k: self.rows[k].value() for k, _, _, _, _, _ in PARAM_DEFS}
         p.update(FIXED)
+        p["keep_frac"] = 1.0 if self.cb_keep.isChecked() else 0.0
         return p
 
-    def render(self):
+    def compute_impact(self):
+        """每个参数往一侧推 12% 量程，看 alpha 变化像素占比（低分辨率估算，成本约 10ms/参数）。"""
+        if self.raw_rgb is None or self.view_mode.currentIndex() == 0:
+            for r in self.rows.values():
+                r.lb_fx.setText("—")
+            return
+        small = self.raw_rgb.copy()
+        small.thumbnail((200, 200), Image.BILINEAR)
+        rgb = np.asarray(small)
+        p = self.params()
+        a0 = np.asarray(key_frame(rgb, **p))[:, :, 3].astype(np.int16)
+        for key, _, lo, hi, _, _ in PARAM_DEFS:
+            d = 0.12 * (hi - lo)
+            v = p[key] + d if p[key] + d <= hi else max(lo, p[key] - d)
+            a1 = np.asarray(key_frame(rgb, **dict(p, **{key: v})))[:, :, 3].astype(np.int16)
+            self.rows[key].lb_fx.setText("%.1f%%" % (float((np.abs(a1 - a0) > 6).mean()) * 100))
+
+    def render(self, fast=False):
         v = self.cur()
         if not v:
             return
         i = min(self.frame_sld.value(), len(v["frames"]) - 1)
         t0 = time.monotonic()
         raw = Image.open(v["frames"][i]).convert("RGB")
-        s = min(1.0, PREVIEW_MAX / max(raw.size))
+        lim = PREVIEW_FAST if fast else PREVIEW_MAX
+        s = min(1.0, lim / max(raw.size))
         self.prev_scale = s
         if s < 1.0:
             raw = raw.resize((max(1, round(raw.width * s)), max(1, round(raw.height * s))),
@@ -423,8 +506,10 @@ class Workshop(QWidget):
                 out = rgba
         self.canvas.set_image(pil_to_pixmap(out))
         dt = (time.monotonic() - t0) * 1000
-        self.lb_perf.setText("%.0f ms · %.1f fps（预览 %d 长边）" % (dt, 1000.0 / dt, PREVIEW_MAX))
+        self.lb_perf.setText("%s %.0f ms · %.1f fps（预览 %d 长边）"
+                             % ("快速" if fast else "完整", dt, 1000.0 / dt, lim))
         self.lb_frame.setText("%d / %d" % (i + 1, len(v["frames"])))
+        self.impact_timer.start(250)
 
     def sample_hue(self):
         v = self.cur()
@@ -449,6 +534,45 @@ class Workshop(QWidget):
         self.log("四角背景：色相 %.1f 度，饱和度中位数 %.2f" % (href, float(np.median(sat[pick]))))
         self.schedule_render()
 
+    # ---- 预设 ----
+    def refresh_presets(self):
+        os.makedirs(PRESET_DIR, exist_ok=True)
+        names = sorted(os.path.splitext(f)[0] for f in os.listdir(PRESET_DIR)
+                       if f.endswith(".json"))
+        self.cb_preset.blockSignals(True)
+        self.cb_preset.clear()
+        self.cb_preset.addItems(names)
+        self.cb_preset.setCurrentIndex(-1)      # 不预选，否则再点同一项不会触发载入
+        self.cb_preset.setPlaceholderText("（未选）")
+        self.cb_preset.blockSignals(False)
+
+    def save_preset(self):
+        name, ok = QInputDialog.getText(self, "存为预设", "预设名（会存成 presets\\<名>.json）")
+        if not ok or not name.strip():
+            return
+        name = re.sub(r'[\\/:*?"<>|]', "_", name.strip())
+        data = {"params": {k: self.rows[k].value() for k, _, _, _, _, _ in PARAM_DEFS},
+                "keep_largest": bool(self.cb_keep.isChecked())}
+        os.makedirs(PRESET_DIR, exist_ok=True)
+        with open(os.path.join(PRESET_DIR, name + ".json"), "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        self.refresh_presets()
+        self.log("已保存预设 presets/%s.json" % name)
+
+    def load_preset(self, *a):
+        name = self.cb_preset.currentText()
+        path = os.path.join(PRESET_DIR, name + ".json")
+        if not name or not os.path.exists(path):
+            return
+        with open(path, encoding="utf-8") as f:
+            d = json.load(f)
+        for k, v in d.get("params", {}).items():
+            if k in self.rows:
+                self.rows[k].set_value(float(v))
+        self.cb_keep.setChecked(bool(d.get("keep_largest", True)))
+        self.log("载入预设：%s" % name)
+        self.schedule_render()
+
     # ---- 生成 ----
     def generate(self):
         v = self.cur()
@@ -457,6 +581,11 @@ class Workshop(QWidget):
             return
         if self.gen and self.gen.isRunning():
             return
+        cid = self.ed_id.text().strip() or v["cid"]
+        if not re.match(r"^[0-9A-Za-z_\-]+$", cid):
+            self.log("clipId 只能用字母/数字/下划线/短横线：%r" % cid)
+            return
+        v["cid"] = cid
         spec = {"id": v["cid"], "video": v["path"], "params": self.params(),
                 "fps": self.sp_fps.value(), "width": self.sp_w.value(),
                 "fmt": self.cb_fmt.currentText(), "quality": self.sp_q.value()}
@@ -481,6 +610,34 @@ class Workshop(QWidget):
         self.prog.setValue(100)
         self.log("完成：frames_%s 共 %d 帧，%.2f MB，%d×%d；meta.json 已更新"
                  % (r["id"], r["count"], r["bytes"] / 1e6, r["width"], r["height"]))
+        if self.cb_reg.isChecked():
+            try:
+                self.register(r["id"])
+            except Exception:
+                self.log("写 clips.json 失败：\n" + traceback.format_exc())
+
+    def register(self, cid):
+        """把 clip 写进 clips.json（同 id 覆盖）。新 clip 要重启宠物才生效。"""
+        path = os.path.join(ROOT, "clips.json")
+        data = {"version": 1, "clips": []}
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+        arr = data.setdefault("clips", [])
+        typ = self.cb_type.currentText()
+        entry = {"id": cid, "name": self.ed_name.text().strip() or cid, "type": typ,
+                 "loop": bool(self.cb_loop.isChecked()) or typ == "idle",
+                 "priority": int(self.sp_prio.value()), "dir": "frames_" + cid}
+        for i, old in enumerate(arr):
+            if old.get("id") == cid:
+                arr[i] = dict(old, **entry)
+                break
+        else:
+            arr.append(entry)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        self.log("已写入 clips.json：%s（%s，优先级 %d，循环 %s）；重启宠物（双击 run.bat）生效"
+                 % (cid, typ, entry["priority"], "是" if entry["loop"] else "否"))
 
     def on_gen_fail(self, s):
         self.b_gen.setEnabled(True)
