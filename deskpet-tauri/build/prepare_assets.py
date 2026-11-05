@@ -28,7 +28,28 @@ MINI = os.path.join(ROOT, "deskpet-mini")
 SRC_FRONTEND = os.path.join(PROJECT, "frontend")
 DIST = os.path.join(PROJECT, "frontend-dist")        # tauri.conf.json 的 frontendDist
 ASSETS = os.path.join(PROJECT, "assets")             # exe 同级的运行期素材目录
-STATE_MAP_SRC = os.path.join(ROOT, "packs", "dsh", "state-map.json")
+PACKS = os.path.join(ROOT, "packs")
+
+
+def active_pack():
+    """packs/active.json → 第一个带 clips.json 的 pack（与 pet.py / 工坊同一套规则）。"""
+    p = os.path.join(PACKS, "active.json")
+    try:
+        with open(p, encoding="utf-8") as f:
+            pid = (json.load(f) or {}).get("pack")
+        if pid and os.path.isdir(os.path.join(PACKS, pid)):
+            return pid
+    except Exception:
+        pass
+    if os.path.isdir(PACKS):
+        for d in sorted(os.listdir(PACKS)):
+            if os.path.exists(os.path.join(PACKS, d, "clips.json")):
+                return d
+    return None
+
+
+PACK_ID = active_pack()
+STATE_MAP_SRC = os.path.join(PACKS, PACK_ID, "state-map.json") if PACK_ID else ""
 
 
 def stage_frontend():
@@ -57,7 +78,9 @@ def prepare_assets(strict):
     meta = json.load(open(meta_path, encoding="utf-8"))
     meta_clips = meta.get("clips", {})
     clips = json.load(open(clips_path, encoding="utf-8"))
-    ids = [c["id"] for c in clips.get("clips", []) if c.get("id")]
+    clips_by_id = {c["id"]: c for c in clips.get("clips", []) if c.get("id")}
+    ids = list(clips_by_id)
+    print(f"active pack = {PACK_ID}（packs/active.json）")
 
     if os.path.isdir(ASSETS):
         shutil.rmtree(ASSETS)
@@ -68,8 +91,12 @@ def prepare_assets(strict):
     total = 0
     missing = []
     for cid in ids:
-        d = meta_clips.get(cid, {}).get("dir", "frames_" + cid)
-        src = os.path.join(MINI, d)
+        # dir 以 clips.json 为准（由 manifest 派生，工坊新加的 clip 也在里面）；meta.json 只作兜底
+        d = clips_by_id[cid].get("dir") or meta_clips.get(cid, {}).get("dir", "frames_" + cid)
+        # 帧目录两种位置都认：packs/<pack>/frames/<clipId>（新格式）/ deskpet-mini/frames_*（旧格式）
+        src = os.path.join(PACKS, PACK_ID or "", d) if PACK_ID else ""
+        if not src or not os.path.isdir(src):
+            src = os.path.join(MINI, d)
         if not os.path.isdir(src):
             missing.append(cid)
             continue

@@ -44,8 +44,30 @@ EXTS = {}          # 每段实际使用的帧后缀："webp" 或 "png"
 ACTIONS = []       # 动作 clip 的 id，按优先级排序
 IDLE_ID = "idle"
 LOG_PATH = None
-# 状态映射：pack 里的配置（tool 与 tauri 版读同一份语义，见 docs/material-packs.md）
-STATE_MAP_PATH = os.path.join(os.path.dirname(ROOT), "packs", "dsh", "state-map.json")
+PACKS_ROOT = os.path.join(os.path.dirname(ROOT), "packs")
+
+
+def active_pack():
+    """当前 pack：packs/active.json 指定；没有就挑第一个带 clips.json 的 pack；再没有返回 None。"""
+    p = os.path.join(PACKS_ROOT, "active.json")
+    try:
+        with open(p, encoding="utf-8") as f:
+            pid = (json.load(f) or {}).get("pack")
+        if pid and os.path.isdir(os.path.join(PACKS_ROOT, pid)):
+            return pid
+    except Exception:
+        pass
+    if os.path.isdir(PACKS_ROOT):
+        for d in sorted(os.listdir(PACKS_ROOT)):
+            if os.path.exists(os.path.join(PACKS_ROOT, d, "clips.json")):
+                return d
+    return None
+
+
+PACK_ID = active_pack()
+PACK_DIR = os.path.join(PACKS_ROOT, PACK_ID) if PACK_ID else ""
+# 状态映射：pack 里的配置（mini 与 tauri 版读同一份语义，见 docs/material-packs.md）
+STATE_MAP_PATH = os.path.join(PACK_DIR, "state-map.json") if PACK_DIR else ""
 
 
 def load_clips():
@@ -68,8 +90,9 @@ def load_clips():
         if not cid:
             continue
         m = meta_clips.get(cid, {})
-        out[cid] = {"dir": m.get("dir", e.get("dir", "frames_" + cid)),
-                    "fps": m.get("fps", 24), "count": m.get("count", 1),
+        out[cid] = {"dir": e.get("dir") or m.get("dir", "frames_" + cid),
+                    "fps": e.get("fps") or m.get("fps", 24),
+                    "count": e.get("count") or m.get("count", 1),
                     "format": m.get("format"),
                     "displayName": e.get("displayName") or e.get("name") or cid,
                     "type": e.get("type", "action"), "loop": bool(e.get("loop", False)),
@@ -83,10 +106,24 @@ def load_clips():
                        key=lambda c: out[c]["priority"])
 
 
+def frames_dir(m):
+    """帧目录解析：packs/<pack>/<dir>（新格式）→ deskpet-mini/<dir>（旧格式，兼容）。
+
+    新结构是 packs/<pack>/frames/<clipId>；没迁移过的老仓库还在 deskpet-mini/frames_*，
+    两个位置都认，避免为了目录结构把已有帧搬来搬去（搬完 pack 里就只认第一处）。
+    """
+    d = m["dir"]
+    for root in ((PACK_DIR,) if PACK_DIR else ()) + (ROOT,):
+        p = os.path.join(root, d)
+        if os.path.isdir(p):
+            return p
+    return os.path.join(ROOT, d)
+
+
 def resolve_ext(clip):
     """优先用 webp（体积约为 png 的 1/7），目录里没有就回退 png。"""
     m = CLIPS[clip]
-    d = os.path.join(ROOT, m["dir"])
+    d = frames_dir(m)
     for ext in ([m["format"]] if m.get("format") else []) + ["webp", "png"]:
         if os.path.exists(os.path.join(d, f"f0000.{ext}")):
             return ext
@@ -95,7 +132,7 @@ def resolve_ext(clip):
 
 def frame_file(clip, idx):
     ext = EXTS.get(clip) or EXTS.setdefault(clip, resolve_ext(clip))
-    return os.path.join(ROOT, CLIPS[clip]["dir"], f"f{idx:04d}.{ext}")
+    return os.path.join(frames_dir(CLIPS[clip]), f"f{idx:04d}.{ext}")
 
 
 def log(msg):
@@ -498,6 +535,11 @@ def main():
 
     META = json.load(open(os.path.join(ROOT, "meta.json"), encoding="utf-8"))
     CLIPS, ACTIONS = load_clips()
+    if PACK_ID:
+        log("pack=%s（packs/%s），%d 段，待机=%s" % (PACK_ID, PACK_ID, len(CLIPS), IDLE_ID))
+    else:
+        log("packs/ 里没有可用素材包，回退旧 deskpet-mini/frames_* 目录；"
+            "建议运行 python build/migrate_packs.py 迁移到 packs/<packId>/")
 
     app = QApplication(sys.argv)
     screen = app.primaryScreen().availableGeometry()

@@ -8,7 +8,9 @@
       "type": "idle",
       "loop": true,
       "priority": 0,
-      "dir": "frames_dsh_idle"
+      "dir": "frames/dsh_idle",
+      "fps": 24,
+      "count": 96
     },
     {
       "id": "dsh_work",
@@ -16,7 +18,9 @@
       "type": "action",
       "loop": false,
       "priority": 1,
-      "dir": "frames_dsh_work"
+      "dir": "frames/dsh_work",
+      "fps": 24,
+      "count": 107
     },
     {
       "id": "dsh_happy",
@@ -24,7 +28,9 @@
       "type": "action",
       "loop": false,
       "priority": 2,
-      "dir": "frames_dsh_happy"
+      "dir": "frames/dsh_happy",
+      "fps": 24,
+      "count": 121
     },
     {
       "id": "dsh_proud",
@@ -32,7 +38,9 @@
       "type": "action",
       "loop": false,
       "priority": 3,
-      "dir": "frames_dsh_proud"
+      "dir": "frames/dsh_proud",
+      "fps": 24,
+      "count": 96
     },
     {
       "id": "dsh_unhappy",
@@ -40,7 +48,9 @@
       "type": "action",
       "loop": false,
       "priority": 4,
-      "dir": "frames_dsh_unhappy"
+      "dir": "frames/dsh_unhappy",
+      "fps": 24,
+      "count": 107
     },
     {
       "id": "dsh_think",
@@ -48,7 +58,9 @@
       "type": "action",
       "loop": false,
       "priority": 5,
-      "dir": "frames_dsh_think"
+      "dir": "frames/dsh_think",
+      "fps": 24,
+      "count": 97
     },
     {
       "id": "dsh_yawn",
@@ -56,7 +68,9 @@
       "type": "action",
       "loop": false,
       "priority": 6,
-      "dir": "frames_dsh_yawn"
+      "dir": "frames/dsh_yawn",
+      "fps": 24,
+      "count": 124
     },
     {
       "id": "dsh_helpless",
@@ -64,7 +78,9 @@
       "type": "action",
       "loop": false,
       "priority": 7,
-      "dir": "frames_dsh_helpless"
+      "dir": "frames/dsh_helpless",
+      "fps": 24,
+      "count": 96
     },
     {
       "id": "dsh_phone",
@@ -72,7 +88,9 @@
       "type": "action",
       "loop": false,
       "priority": 8,
-      "dir": "frames_dsh_phone"
+      "dir": "frames/dsh_phone",
+      "fps": 24,
+      "count": 124
     },
     {
       "id": "dsh_rice",
@@ -80,7 +98,9 @@
       "type": "action",
       "loop": false,
       "priority": 9,
-      "dir": "frames_dsh_rice"
+      "dir": "frames/dsh_rice",
+      "fps": 24,
+      "count": 124
     },
     {
       "id": "dsh_shock",
@@ -88,39 +108,9 @@
       "type": "action",
       "loop": false,
       "priority": 10,
-      "dir": "frames_dsh_shock"
-    },
-    {
-      "id": "idle",
-      "displayName": "旧·待机",
-      "type": "action",
-      "loop": false,
-      "priority": 11,
-      "dir": "frames_idle"
-    },
-    {
-      "id": "action",
-      "displayName": "旧·挥手",
-      "type": "action",
-      "loop": false,
-      "priority": 12,
-      "dir": "frames_action"
-    },
-    {
-      "id": "action2",
-      "displayName": "旧·打字",
-      "type": "action",
-      "loop": false,
-      "priority": 13,
-      "dir": "frames_action2"
-    },
-    {
-      "id": "action3",
-      "displayName": "旧·抱臂",
-      "type": "action",
-      "loop": false,
-      "priority": 14,
-      "dir": "frames_action3"
+      "dir": "frames/dsh_shock",
+      "fps": 24,
+      "count": 124
     }
   ]
 }

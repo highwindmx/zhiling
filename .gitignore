@@ -3,6 +3,8 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .venv/
+.venv-uv/
+.venv*/
 venv/
 *venv/
 
@@ -17,22 +19,40 @@ deskpet-tauri/assets/
 # Tauri 前端暂存目录（编译期输入，产物 32KB）
 deskpet-tauri/frontend-dist/
 
-# 工坊/素材包：帧与 mp4 走 Release 附件，不进 git（manifest 与 state-map 例外）
+# 工坊/素材包：帧与 mp4 走 Release 附件，不进 git（manifest 与 state-map/clips.json 例外）
+# 旧结构 packs/<packId>/frames_<clipId>/ 与新结构 packs/<packId>/frames/<clipId>/ 都忽略
 packs/*/frames/
+packs/**/frames/
 packs/*/source/
+packs/**/source/
 packs/*/.backup/
+packs/**/.backup/
+# 迁移前的旧清单备份（meta.json / 旧 manifest）
+packs/.legacy/
 packs/*/posters/
+
+# 原始素材（用户手上的绿幕 mp4，来自即梦/海螺）
+material/
+# 第三方只读目录（dsh-deskpet-bridge，不入库也不改）
+dsh-deskpet-bridge/
 
 # build 目录下的抽帧中间产物（保留 .py 脚本）
 deskpet-mini/build/f24/
 deskpet-mini/build/action_raw/
 deskpet-mini/build/raw_frames/
 deskpet-mini/build/raw_*/
+deskpet-mini/build/probe_*/
+deskpet-mini/build/_accept_out/
+deskpet-mini/build/_probe2/
 deskpet-mini/build/test_frames/
 deskpet-mini/build/webp_test/
 deskpet-mini/build/judge/
 deskpet-mini/build/*.png
 deskpet-mini/build/*.log
+deskpet-mini/build/*.txt
+deskpet-mini/debug.log
+deskpet-mini/*.log
+harness_bridge_test.mjs
 
 # ---------- 根目录的原始素材（成品与素材已放到 deskpet-mini/assets 与 docs） ----------
 /*.mp4

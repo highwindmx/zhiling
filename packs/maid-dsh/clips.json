@@ -1,0 +1,116 @@
+{
+  "version": 1,
+  "defaultIdle": "dsh_idle",
+  "clips": [
+    {
+      "id": "dsh_idle",
+      "displayName": "待机",
+      "type": "idle",
+      "loop": true,
+      "priority": 0,
+      "dir": "frames/dsh_idle",
+      "fps": 24,
+      "count": 96
+    },
+    {
+      "id": "dsh_work",
+      "displayName": "工作中",
+      "type": "action",
+      "loop": false,
+      "priority": 1,
+      "dir": "frames/dsh_work",
+      "fps": 24,
+      "count": 107
+    },
+    {
+      "id": "dsh_happy",
+      "displayName": "真开心",
+      "type": "action",
+      "loop": false,
+      "priority": 2,
+      "dir": "frames/dsh_happy",
+      "fps": 24,
+      "count": 121
+    },
+    {
+      "id": "dsh_proud",
+      "displayName": "得意状",
+      "type": "action",
+      "loop": false,
+      "priority": 3,
+      "dir": "frames/dsh_proud",
+      "fps": 24,
+      "count": 96
+    },
+    {
+      "id": "dsh_unhappy",
+      "displayName": "不高兴",
+      "type": "action",
+      "loop": false,
+      "priority": 4,
+      "dir": "frames/dsh_unhappy",
+      "fps": 24,
+      "count": 107
+    },
+    {
+      "id": "dsh_think",
+      "displayName": "思考状",
+      "type": "action",
+      "loop": false,
+      "priority": 5,
+      "dir": "frames/dsh_think",
+      "fps": 24,
+      "count": 97
+    },
+    {
+      "id": "dsh_yawn",
+      "displayName": "打哈欠",
+      "type": "action",
+      "loop": false,
+      "priority": 6,
+      "dir": "frames/dsh_yawn",
+      "fps": 24,
+      "count": 124
+    },
+    {
+      "id": "dsh_helpless",
+      "displayName": "无奈状",
+      "type": "action",
+      "loop": false,
+      "priority": 7,
+      "dir": "frames/dsh_helpless",
+      "fps": 24,
+      "count": 96
+    },
+    {
+      "id": "dsh_phone",
+      "displayName": "看手机",
+      "type": "action",
+      "loop": false,
+      "priority": 8,
+      "dir": "frames/dsh_phone",
+      "fps": 24,
+      "count": 124
+    },
+    {
+      "id": "dsh_rice",
+      "displayName": "吃米饭",
+      "type": "action",
+      "loop": false,
+      "priority": 9,
+      "dir": "frames/dsh_rice",
+      "fps": 24,
+      "count": 124
+    },
+    {
+      "id": "dsh_shock",
+      "displayName": "炸毛",
+      "type": "action",
+      "loop": false,
+      "priority": 10,
+      "dir": "frames/dsh_shock",
+      "fps": 24,
+      "count": 124
+    }
+  ]
+}
