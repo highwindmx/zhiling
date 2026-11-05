@@ -124,6 +124,126 @@
         "watermarks": "[[610, 682, 1024, 745]]",
         "hue_ref": "124.6"
       }
+    },
+    "dsh_idle": {
+      "dir": "frames_dsh_idle",
+      "fps": 24,
+      "count": 96,
+      "format": "webp",
+      "scale": 0.6827,
+      "offset": [
+        -201,
+        37
+      ],
+      "foot": [
+        288,
+        528
+      ],
+      "source": "待机.mp4",
+      "keyer": {
+        "hue_ref": "135.0",
+        "hue_in": "18.0",
+        "hue_out": "34.0",
+        "sat_lo": "0.06",
+        "sat_hi": "0.13",
+        "val_lo": "0.35",
+        "val_hi": "0.55",
+        "erode": "1",
+        "blur": "1.0",
+        "floor": "0.16",
+        "despill": "0.7",
+        "keep_frac": "1.0"
+      }
+    },
+    "dsh_work": {
+      "dir": "frames_dsh_work",
+      "fps": 24,
+      "count": 107,
+      "format": "webp",
+      "scale": 0.7723,
+      "offset": [
+        -116,
+        -31
+      ],
+      "foot": [
+        288,
+        528
+      ],
+      "source": "工作中.mp4",
+      "keyer": {
+        "hue_ref": "136.0",
+        "hue_in": "18.0",
+        "hue_out": "34.0",
+        "sat_lo": "0.45",
+        "sat_hi": "0.6",
+        "val_lo": "0.35",
+        "val_hi": "0.55",
+        "erode": "1",
+        "blur": "1.0",
+        "floor": "0.16",
+        "despill": "0.7",
+        "keep_frac": "1.0"
+      }
+    },
+    "dsh_happy": {
+      "dir": "frames_dsh_happy",
+      "fps": 24,
+      "count": 121,
+      "format": "webp",
+      "scale": 0.8643,
+      "offset": [
+        -217,
+        -46
+      ],
+      "foot": [
+        287,
+        528
+      ],
+      "source": "真开心.mp4",
+      "keyer": {
+        "hue_ref": "148.0",
+        "hue_in": "18.0",
+        "hue_out": "34.0",
+        "sat_lo": "0.7",
+        "sat_hi": "0.85",
+        "val_lo": "0.35",
+        "val_hi": "0.55",
+        "erode": "1",
+        "blur": "1.0",
+        "floor": "0.16",
+        "despill": "0.7",
+        "keep_frac": "1.0"
+      }
+    },
+    "dsh_unhappy": {
+      "dir": "frames_dsh_unhappy",
+      "fps": 24,
+      "count": 107,
+      "format": "webp",
+      "scale": 0.6951,
+      "offset": [
+        -93,
+        1
+      ],
+      "foot": [
+        288,
+        528
+      ],
+      "source": "不高兴.mp4",
+      "keyer": {
+        "hue_ref": "124.0",
+        "hue_in": "18.0",
+        "hue_out": "34.0",
+        "sat_lo": "0.35",
+        "sat_hi": "0.5",
+        "val_lo": "0.35",
+        "val_hi": "0.55",
+        "erode": "1",
+        "blur": "1.0",
+        "floor": "0.16",
+        "despill": "0.7",
+        "keep_frac": "1.0"
+      }
     }
   }
 }
