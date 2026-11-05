@@ -282,6 +282,9 @@ fn show_menu(
 
     menu.append(&PredefinedMenuItem::separator(&win).map_err(|e| e.to_string())?)
         .map_err(|e| e.to_string())?;
+    let ws = MenuItem::with_id(&win, "workshop", "素材工坊…", true, None::<&str>)
+        .map_err(|e| e.to_string())?;
+    menu.append(&ws).map_err(|e| e.to_string())?;
     let quit = MenuItem::with_id(&win, "quit", "退出", true, None::<&str>)
         .map_err(|e| e.to_string())?;
     menu.append(&quit).map_err(|e| e.to_string())?;
@@ -358,6 +361,53 @@ fn quit_app(app: tauri::AppHandle) {
     app.exit(0);
 }
 
+/// 素材工坊是 Python 工具（deskpet-mini/workshop.bat）。Tauri 版是单 exe，不依赖 Python：
+/// 能找到 workshop.bat 就拉起来，找不到就把原因回给前端提示，不静默失败、也不把工坊重写成 Rust。
+fn find_workshop() -> Option<PathBuf> {
+    let mut cands: Vec<PathBuf> = Vec::new();
+    if let Ok(p) = std::env::var("DESKPET_WORKSHOP") {
+        cands.push(PathBuf::from(p));
+    }
+    if let Some(root) = ASSET_ROOT.get() {
+        // exe 同级 assets/ → 仓库 deskpet-mini/（开发布局）
+        cands.push(root.join("..").join("deskpet-mini").join("workshop.bat"));
+        cands.push(root.join("workshop.bat"));
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        cands.push(cwd.join("deskpet-mini").join("workshop.bat"));
+        cands.push(cwd.join("workshop.bat"));
+        cands.push(cwd.join("..").join("deskpet-mini").join("workshop.bat"));
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            cands.push(dir.join("workshop.bat"));
+            cands.push(dir.join("deskpet-mini").join("workshop.bat"));
+        }
+    }
+    cands.into_iter().find(|p| p.is_file())
+}
+
+#[tauri::command]
+fn open_workshop() -> Result<String, String> {
+    let p = find_workshop().ok_or_else(|| {
+        "找不到 workshop.bat：素材工坊是 Python 工具，Tauri 版单 exe 不带 Python。\
+把 deskpet-mini/workshop.bat 放到 assets 同级，或设置环境变量 DESKPET_WORKSHOP 指向它；\
+也可以直接双击 deskpet-mini\\workshop.bat。"
+            .to_string()
+    })?;
+    log_line(&format!("workshop_launch path={}", p.display()));
+    let dir = p
+        .parent()
+        .map(|d| d.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("."));
+    std::process::Command::new("cmd")
+        .args(["/c", "start", "", &p.to_string_lossy()])
+        .current_dir(dir)
+        .spawn()
+        .map_err(|e| format!("拉起 workshop.bat 失败：{}", e))?;
+    Ok(p.display().to_string())
+}
+
 fn on_menu_event(app: &tauri::AppHandle, id: &str) {
     log_line(&format!("menu_pick id={}", id));
     if let Some(win) = app.get_webview_window("main") {
@@ -389,7 +439,8 @@ fn main() {
             quit_app,
             cursor_local,
             set_click_through,
-            assets_info
+            assets_info,
+            open_workshop
         ])
         .on_menu_event(|app, event| on_menu_event(app, event.id().0.as_str()))
         .setup(|app| {

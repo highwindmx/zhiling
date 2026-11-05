@@ -463,6 +463,10 @@ window.__deskpetPick = (key) => {
   if (key.startsWith("tier:")) applyTier(key.slice(5));
   else if (key.startsWith("action:")) {
     if (state && state.isIdle) playAction(key.slice(7));
+  } else if (key === "workshop") {
+    invoke("open_workshop")
+      .then((p) => logEvent("workshop_open path=" + p))
+      .catch((e) => showHint("这个功能需要 Python 版工具", String(e)));
   } else if (key === "quit") quitApp();
 };
 
