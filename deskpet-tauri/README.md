@@ -2,27 +2,51 @@
 
 Tauri 2 + 零构建前端的透明桌宠，与 [deskpet-mini](../deskpet-mini/)（PyQt6）**行为等价**：同一份素材、同一套尺寸/锚点换算、同样的拖动 / 双击轮播动作 / 原生右键菜单 / Esc 退出。这个目录本轮的目标是"跑起来 + 可测"，不含 DSH 对话桥接、托盘动画、多角色、AI 功能。
 
-## 构建
+## 从零构建（`Cargo.toml` 在哪、要跑哪几条命令）
+
+**先说位置：`Cargo.toml` 在 `deskpet-tauri\src-tauri\Cargo.toml`，不在 `deskpet-tauri\` 根目录。**
+这是 Tauri 的固定布局：前端目录（`frontend/`）和 Rust crate（`src-tauri/`）平级，`Cargo.toml` 跟 crate 走。
+所以直接 `cd deskpet-tauri && cargo build --release` 会报 `could not find Cargo.toml`，必须进 `src-tauri\` 或加 `--manifest-path`。
+
+**前端不需要 `npm install` / `npm run build`**：`frontend/` 是零构建的 ES Module（没有 vite/webpack 编译步骤），
+`package.json` 里的 `@tauri-apps/cli` 只在 `npm run build`（打 NSIS 安装包）或 `tauri dev` 时才用得到。
+没有 Node 的环境照样能出 exe。
+
+前置只有两样：Rust（stable，MSVC 工具链，含 VS Build Tools 的 C++ 桌面组件）+ Python 3（`prepare_assets.py` 只用标准库）。
+另外素材前提：`deskpet-mini/frames_*` 已生成（帧序列不入库，见 [deskpet-mini/README.md](../deskpet-mini/README.md)）。
+
+三条命令（在 `deskpet-tauri\` 下逐条执行）：
 
 ```bat
-:: 0) 前置：Rust 1.8x + MSVC Build Tools + Windows SDK；mini 版的 frames_* 已存在
-::    （frames_* 不入库，先按 deskpet-mini/README.md 重建）
-
-:: 1) 同步素材 + 生成前端清单（从 deskpet-mini 拷帧到 frontend-dist/assets）
+:: 1) 同步素材：把 deskpet-mini\frames_* 拷到 frontend-dist\assets，并生成合并版 clips.json
 python build\prepare_assets.py
-::    idle 96 / action 121 / action2 107 / action3 107 帧，canvas 576x530，共 19.6MB
+::    idle 96 / action 121 / action2 107 / action3 107 帧，canvas 576x530，共约 19.6MB
 
-:: 2) 构建 release（单文件，资源已内嵌）
+:: 2) 进 crate 目录再编译（.cargo/config.toml 的 crates.io 镜像只在 crate 目录内生效）
 cd src-tauri
-cargo build --release
-::    产物：src-tauri\target\release\deskpet-tauri.exe（约 22.8MB）
+cargo build --release --target-dir %TEMP%\deskpet-tauri-target
+
+:: 3) 运行产物
+%TEMP%\deskpet-tauri-target\release\deskpet-tauri.exe
 ```
 
-如果本机遭遇 `拒绝访问 (os error 5)`（本仓库目录带 `Everyone Deny DeleteSubdirectoriesAndFiles` ACE，cargo 无法原子覆盖指纹文件），把 target 目录挪到可写位置：
+**为什么第 2 条要 `--target-dir %TEMP%`**：本仓库目录带 `Everyone Deny DeleteSubdirectoriesAndFiles` ACE，
+cargo 增量构建时无法原子覆盖 `target\release\.fingerprint\*`，会直接报 `拒绝访问 (os error 5)`。
+把 target 指到 `%TEMP%`（可写）就绕开了；不带这个参数时产物会落在 `src-tauri\target\release\deskpet-tauri.exe`（本机这条路会失败）。
+想换位置：`set DESKPET_TARGET_DIR=D:\some\writable\dir`，`build.bat` 会读这个环境变量。
+
+**`prepare_assets.py` 什么时候必须跑**：任何一次 `cargo build` 之前。原因有两条——
+前端资源是**编译期**由 tauri-build 内嵌进 exe 的，运行时读不到 `../deskpet-mini/`；不跑这一步 `frontend-dist\` 不存在，编译会失败或内嵌不到素材（窗口起来是空的）。
+换了素材（改 `clips.json`、重生成 `frames_*`）之后也要重跑，然后再 `cargo build`。
+
+**一键脚本**：`build.bat`（在 `deskpet-tauri\` 根目录）等价于上面 1+2 两步，每步失败都会带原因停下、不吞错：
 
 ```bat
-cargo build --release --target-dir %TEMP%\deskpet-tauri-target
+build.bat            :: release
+build.bat debug      :: debug
 ```
+
+`build.bat` 的产物同样在 `%TEMP%\deskpet-tauri-target\release\deskpet-tauri.exe`；它不会替你 `git push`，也不会打安装包（见「踩过的坑」第 8 条）。
 
 ## 运行
 
@@ -133,12 +157,14 @@ powershell -NoProfile -File build\bench-chart.ps1
 
 ```
 deskpet-tauri/
+├─ build.bat                   一键：同步素材 → cargo build（失败可见、不吞错）
 ├─ run.bat                     启动（含 WebView2 用户目录兜底）
 ├─ frontend/                   前端源码（零构建，ES Module）
 │  ├─ index.html               两层 canvas 的透明骨架
 │  └─ src/main.js              播放器 / 缓存 / 拖动 / 双击 / 菜单 / 快捷键
 ├─ frontend-dist/              构建输入（不入库）：prepare_assets.py 产出
-├─ src-tauri/
+├─ src-tauri/                  Rust crate（Cargo.toml 在这里，不在项目根）
+│  ├─ build.bat                仅 cargo build（老脚本，保留给「已在 crate 目录里」的场景）
 │  ├─ src/main.rs              show_window / set_tier / show_menu / quit_app
 │  ├─ tauri.conf.json          无边框/透明/置顶/跳任务栏/visible:false
 │  └─ icons/                   程序图标

@@ -1,9 +1,11 @@
 @echo off
 setlocal
 set "EXE=%~dp0src-tauri\target\release\deskpet-tauri.exe"
+if not exist "%EXE%" set "EXE=%TEMP%\deskpet-tauri-target\release\deskpet-tauri.exe"
 if not exist "%EXE%" (
-  echo Release exe not found: %EXE%
-  echo Build first: cd src-tauri ^&^& cargo build --release
+  echo Release exe not found: src-tauri\target\release\deskpet-tauri.exe
+  echo                      or %%TEMP%%\deskpet-tauri-target\release\deskpet-tauri.exe
+  echo Build first: build.bat
   exit /b 1
 )
 REM Use a writable user-data folder next to the project. Some locked-down
