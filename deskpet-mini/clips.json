@@ -1,36 +1,125 @@
 {
   "version": 1,
+  "defaultIdle": "dsh_idle",
   "clips": [
     {
-      "id": "idle",
-      "name": "待机",
+      "id": "dsh_idle",
+      "displayName": "待机",
       "type": "idle",
       "loop": true,
       "priority": 0,
+      "dir": "frames_dsh_idle"
+    },
+    {
+      "id": "dsh_work",
+      "displayName": "工作中",
+      "type": "action",
+      "loop": false,
+      "priority": 1,
+      "dir": "frames_dsh_work"
+    },
+    {
+      "id": "dsh_happy",
+      "displayName": "真开心",
+      "type": "action",
+      "loop": false,
+      "priority": 2,
+      "dir": "frames_dsh_happy"
+    },
+    {
+      "id": "dsh_proud",
+      "displayName": "得意状",
+      "type": "action",
+      "loop": false,
+      "priority": 3,
+      "dir": "frames_dsh_proud"
+    },
+    {
+      "id": "dsh_unhappy",
+      "displayName": "不高兴",
+      "type": "action",
+      "loop": false,
+      "priority": 4,
+      "dir": "frames_dsh_unhappy"
+    },
+    {
+      "id": "dsh_think",
+      "displayName": "思考状",
+      "type": "action",
+      "loop": false,
+      "priority": 5,
+      "dir": "frames_dsh_think"
+    },
+    {
+      "id": "dsh_yawn",
+      "displayName": "打哈欠",
+      "type": "action",
+      "loop": false,
+      "priority": 6,
+      "dir": "frames_dsh_yawn"
+    },
+    {
+      "id": "dsh_helpless",
+      "displayName": "无奈状",
+      "type": "action",
+      "loop": false,
+      "priority": 7,
+      "dir": "frames_dsh_helpless"
+    },
+    {
+      "id": "dsh_phone",
+      "displayName": "看手机",
+      "type": "action",
+      "loop": false,
+      "priority": 8,
+      "dir": "frames_dsh_phone"
+    },
+    {
+      "id": "dsh_rice",
+      "displayName": "吃米饭",
+      "type": "action",
+      "loop": false,
+      "priority": 9,
+      "dir": "frames_dsh_rice"
+    },
+    {
+      "id": "dsh_shock",
+      "displayName": "炸毛",
+      "type": "action",
+      "loop": false,
+      "priority": 10,
+      "dir": "frames_dsh_shock"
+    },
+    {
+      "id": "idle",
+      "displayName": "旧·待机",
+      "type": "action",
+      "loop": false,
+      "priority": 11,
       "dir": "frames_idle"
     },
     {
       "id": "action",
-      "name": "挥手",
+      "displayName": "旧·挥手",
       "type": "action",
       "loop": false,
-      "priority": 1,
+      "priority": 12,
       "dir": "frames_action"
     },
     {
       "id": "action2",
-      "name": "打字",
+      "displayName": "旧·打字",
       "type": "action",
       "loop": false,
-      "priority": 2,
+      "priority": 13,
       "dir": "frames_action2"
     },
     {
       "id": "action3",
-      "name": "抱臂",
+      "displayName": "旧·抱臂",
       "type": "action",
       "loop": false,
-      "priority": 3,
+      "priority": 14,
       "dir": "frames_action3"
     }
   ]

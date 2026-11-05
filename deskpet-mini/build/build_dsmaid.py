@@ -1,53 +1,73 @@
-"""把 material/DSMaid 的绿幕视频接入成 clip 帧序列（第一批 4 段）。
+"""把 material/DSMaid 的绿幕 mp4 批量转成桌宠帧（走 build_frames.build_clip）。
 
-只做「构建 + 写 meta.json」，**不改 clips.json**：新段是否替换默认待机、以及双击轮播
-顺序，需要先在两版里实测通过再登记（见 docs/screenshots 与 README 的接入说明）。
+参数来源是 build/analyze_pack.py 的实测背景值（色相 / 饱和度 / 亮度），每段单独一套，
+因为 11 段的绿幕不是一个色号（98°~151°），其中「待机」还是上绿下浅的亮度渐变。
 
-用法（在 deskpet-mini 目录下）：
-    .venv\\Scripts\\python.exe build\\build_dsmaid.py
-    .venv\\Scripts\\python.exe build\\build_dsmaid.py --only dsh_work
-
-每段的 hue_ref / 饱和度阈值都必须单独采样（这批视频的绿幕色相从 124° 到 148° 不等，
-背景还有一路"上绿下浅"的亮度渐变，套用同一组阈值会把发色或裙摆一起抠掉）。
+用法：
+    .venv\\Scripts\\python.exe build\\build_dsmaid.py            # 全部 11 段
+    .venv\\Scripts\\python.exe build\\build_dsmaid.py dsh_idle   # 只重建指定段
 """
-import argparse, os, sys
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from build_frames import build_clip
+from build_frames import build_clip                       # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DSMAID = os.path.join(os.path.dirname(ROOT), "material", "DSMaid")
+SRC = os.path.join(os.path.dirname(ROOT), "material", "DSMaid")
+
+
+def spec(cid, video, hue, sat, val, hue_in=14.0, hue_out=28.0, crop=None):
+    params = dict(hue_ref=hue, hue_in=hue_in, hue_out=hue_out,
+                  sat_lo=sat[0], sat_hi=sat[1], val_lo=val[0], val_hi=val[1],
+                  erode=1, blur=1.0, floor=0.16, despill=0.7,
+                  # 只留最大连通块：水印文字（Hailuo AI × MINIMAX 等）和零散光晕会被丢掉，
+                  # 不用去硬编码每个片源的水印坐标
+                  keep_frac=0.05, watermarks=[])
+    s = dict(id=cid, video=os.path.join(SRC, video), params=params,
+             fps=24, width=576, fmt="webp", quality=80)
+    if crop:
+        s["crop"] = crop
+    return s
+
 
 SPECS = [
-    # id, 视频, hue_ref, (sat_lo, sat_hi)
-    # 注：这批源片右下角有平台水印（千问 / MINIMAX / 即梦AI），大部分被 HSV 阈值顺带压掉，
-    # 剩下一点点留在画布最右下角。要彻底清掉可给 params 加 watermarks=[(x0,y0,x1,y1)]（源图坐标），
-    # 但框太大会切到裙摆，需要逐段试，本轮没做（见 README「已知限制」）。
-    ("dsh_idle", "待机.mp4", 135.0, (0.06, 0.13)),
-    ("dsh_work", "工作中.mp4", 136.0, (0.45, 0.60)),
-    ("dsh_happy", "真开心.mp4", 148.0, (0.70, 0.85)),
-    ("dsh_unhappy", "不高兴.mp4", 124.0, (0.35, 0.50)),
+    # id, 源文件, 背景色相, (sat_lo, sat_hi), (val_lo, val_hi)  —— 值来自 build/search_keyer.py
+    # 待机是"上绿下浅"的亮度渐变，色相窗要比别人宽、饱和度下限要低，沿用第一轮验证过的值
+    spec("dsh_idle", "待机.mp4", 135.0, (0.06, 0.13), (0.35, 0.55), 18.0, 34.0),
+    spec("dsh_happy", "真开心.mp4", 148.0, (0.465, 0.485), (0.386, 0.506)),
+    spec("dsh_work", "工作中.mp4", 135.0, (0.326, 0.346), (0.48, 0.60)),
+    spec("dsh_unhappy", "不高兴.mp4", 124.0, (0.268, 0.288), (0.35, 0.55)),
+    spec("dsh_proud", "得意状.mp4", 138.0, (0.261, 0.281), (0.49, 0.61), 12.0, 24.0),
+    spec("dsh_think", "思考状.mp4", 98.0, (0.092, 0.112), (0.343, 0.463), 12.0, 26.0),
+    spec("dsh_yawn", "打哈欠.mp4", 120.0, (0.172, 0.192), (0.35, 0.55)),
+    spec("dsh_helpless", "无奈状.mp4", 141.0, (0.237, 0.257), (0.245, 0.365)),
+    spec("dsh_phone", "看手机.mp4", 111.0, (0.174, 0.194), (0.35, 0.55)),
+    # 吃米饭：两侧是"深绿色"遮幅（不是纯黑，所以按亮度阈值扫不到），并集 172/165，留 2px 余量
+    spec("dsh_rice", "吃米饭.mp4", 151.0, (0.108, 0.128), (0.172, 0.292), 14.0, 28.0,
+         crop=(174, 0, 665, 480)),
+    # 炸毛：两侧纯黑遮幅，逐帧 167~172px 晃，取全片并集 172/172 后再留 2px 余量，
+    # 只裁一次（不逐帧裁，否则脚底会随黑边宽度抖动）
+    spec("dsh_shock", "炸毛.mp4", 96.0, (0.172, 0.192), (0.348, 0.468), 12.0, 26.0,
+         crop=(174, 0, 654, 480)),
 ]
 
-
-def spec(cid, video_name, hue, sat):
-    video = os.path.join(DSMAID, video_name)
-    if not os.path.exists(video):
-        raise SystemExit("缺少视频：%s" % video)
-    params = dict(hue_ref=hue, hue_in=18.0, hue_out=34.0, sat_lo=sat[0], sat_hi=sat[1],
-                  val_lo=0.35, val_hi=0.55, erode=1, blur=1.0, floor=0.16,
-                  despill=0.7, keep_frac=1.0)
-    return dict(id=cid, video=video, params=params, fps=24, width=576, fmt="webp", quality=80)
+BATCH1 = {"dsh_idle", "dsh_happy", "dsh_work", "dsh_unhappy"}
 
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--only", nargs="*", help="只构建指定 id")
-    args = ap.parse_args()
-    for cid, video, hue, sat in SPECS:
-        if args.only and cid not in args.only:
+    want = set(sys.argv[1:]) or {s["id"] for s in SPECS}
+    total = 0
+    for s in SPECS:
+        if s["id"] not in want:
             continue
-        print("=== %s（%s，hue=%.0f°, sat=%.2f~%.2f）" % (cid, video, hue, sat[0], sat[1]))
-        build_clip(spec(cid, video, hue, sat))
+        if not os.path.exists(s["video"]):
+            print("[跳过] 找不到 %s" % s["video"])
+            continue
+        print("== %s <- %s" % (s["id"], os.path.basename(s["video"])))
+        r = build_clip(s)
+        total += r["bytes"]
+    print("合计 %.2f MB" % (total / 1e6))
 
 
 if __name__ == "__main__":

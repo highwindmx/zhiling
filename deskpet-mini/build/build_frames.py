@@ -113,7 +113,11 @@ def build_clip(spec, log=print):
     out_w = int(spec.get("width", OUT_W))
     fmt = spec.get("fmt", OUT_FMT)
     qual = int(spec.get("quality", WEBP_Q))
+    # 画布比例固定（与旧素材同一套对齐基准），不随源片裁切范围变化，否则不同 clip
+    # 的画布尺寸会互相错位
     oh = round(out_w * CANVAS_H / (CROP[2] - CROP[0]))
+    # crop：整片统一裁一次（黑边这类逐帧会变化的边，绝不能逐帧各裁，否则脚底会抖）
+    crop = tuple(spec["crop"]) if spec.get("crop") else None
 
     raw_dir = os.path.join(BASE, "raw_" + cid)
     files = extract_frames(src, raw_dir, fps)
@@ -123,7 +127,10 @@ def build_clip(spec, log=print):
 
     boxes = []
     for p in (files[0], files[len(files) // 2], files[-1]):
-        rgba = key_frame(np.asarray(Image.open(p).convert("RGB")), **params)
+        im = Image.open(p).convert("RGB")
+        if crop:
+            im = im.crop(crop)
+        rgba = key_frame(np.asarray(im), **params)
         a = np.asarray(rgba)[:, :, 3]
         ys, xs = np.where(a > 8)
         if len(ys):
@@ -145,7 +152,10 @@ def build_clip(spec, log=print):
         os.remove(f)
     n = 0
     for i, p in enumerate(files):
-        rgba = key_frame(np.asarray(Image.open(p).convert("RGB")), **params)
+        rgb = Image.open(p).convert("RGB")
+        if crop:
+            rgb = rgb.crop(crop)
+        rgba = key_frame(np.asarray(rgb), **params)
         small = rgba.resize((max(1, round(rgba.width * scale)),
                              max(1, round(rgba.height * scale))), Image.LANCZOS)
         canvas = Image.new("RGBA", (out_w, oh), (0, 0, 0, 0))
@@ -168,6 +178,7 @@ def build_clip(spec, log=print):
         "dir": "frames_" + cid, "fps": fps, "count": n, "format": fmt,
         "scale": round(scale, 4), "offset": [ox, oy], "foot": foot,
         "source": os.path.basename(src),
+        "crop": list(crop) if crop else None,
         "keyer": {k: str(v) for k, v in params.items()},
     }
     with open(meta_path, "w", encoding="utf-8") as f:
