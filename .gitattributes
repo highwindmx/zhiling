@@ -1,0 +1,3 @@
+# cmd.exe 要求批处理是 CRLF，且本机 core.autocrlf=input 不会在检出时补 CRLF；
+# 不设这条规则，clone 出来的 build.bat / run.bat 会变成 LF，cmd 解析会串行。
+*.bat text eol=crlf
