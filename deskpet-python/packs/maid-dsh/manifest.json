@@ -400,17 +400,17 @@
       ],
       "source": "吃米饭.mp4",
       "keyer": {
-        "hue_ref": "151.0",
+        "hue_ref": "99.0",
         "hue_in": "14.0",
         "hue_out": "28.0",
         "sat_lo": "0.108",
         "sat_hi": "0.128",
         "val_lo": "0.172",
         "val_hi": "0.292",
-        "erode": "1",
+        "erode": "0",
         "blur": "1.0",
         "floor": "0.16",
-        "despill": "0.7",
+        "despill": "0.85",
         "keep_frac": "0.05",
         "watermarks": "[]"
       }

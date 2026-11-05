@@ -575,7 +575,7 @@ window.addEventListener("keydown", (e) => {
 });
 
 // ---- 状态映射 --------------------------------------------------------------
-// 配置：assets/state-map.json（源文件 repo 的 packs/<packId>/state-map.json）。
+// 配置：assets/state-map.json（源文件 deskpet-python/packs/<packId>/state-map.json）。
 // 与 deskpet-python/state_map.py 同一套语义：每个可观测状态 → 一个 clip，
 // 播放前过 冷却 / 占用（busy|hold）/ 禁用 三道闸；priority 用 0~100 口径。
 // 两个提醒态（awaiting_user / needs_decision）额外支持 repeat：

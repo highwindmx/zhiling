@@ -13,7 +13,7 @@ Tauri 2 + 零构建前端的透明桌宠，与 [deskpet-python](../deskpet-pytho
 没有 Node 的环境照样能出 exe。
 
 前置只有两样：Rust（stable，MSVC 工具链，含 VS Build Tools 的 C++ 桌面组件）+ Python 3（`prepare_assets.py` 只用标准库）。
-另外素材前提：`packs\<packId>\frames\` 已生成（帧序列不入库，见 [deskpet-python/README.md](../deskpet-python/README.md)）。
+另外素材前提：`deskpet-python\packs\<packId>\frames\` 已生成（帧序列不入库，见 [deskpet-python/README.md](../deskpet-python/README.md)）。`prepare_assets.py` 按 `deskpet-python\packs\` → 仓库根 `packs\` 的顺序找第一个存在的。
 
 两条命令（在 `deskpet-tauri\` 下逐条执行）：
 
@@ -149,7 +149,7 @@ deskpet-tauri\
 
 | 维度 | deskpet-python（PyQt6） | deskpet-tauri |
 | --- | --- | --- |
-| 素材 | `packs\<packId>\frames\<clipId>\` + `manifest.json`，WebP q80 | **同一份**（运行期从 `assets\` 读，不编译进 exe） |
+| 素材 | `deskpet-python\packs\<packId>\frames\<clipId>\` + `manifest.json`，WebP q80 | **同一份**（运行期从 `assets\` 读，不编译进 exe） |
 | 帧清单 | `clips.json`（顺序/类型/名字）+ `meta.json`（帧数/fps/格式）+ `manifest.json`（画布/license） | `assets/clips.json` / `manifest.json` / `meta.json`（与 mini 同一份，`prepare_assets.py --assets` 原样复制） |
 | 播放 | `QTimer` 24fps，后台线程解码，缓存 ±14 帧 | `requestAnimationFrame` 24fps，`ImageBitmap` **整段常驻** |
 | 交叉淡化 | `QPainter` opacity 250ms | 双 canvas 交叉 + CSS opacity 250ms |
@@ -188,9 +188,9 @@ powershell -NoProfile -File build\bench-chart.ps1
 | 待机 CPU（单核） | **7.3%~13.6%**（两轮 60s 采样） | 18.5% | 与上轮 8.9% 同量级，波动来自合成器空闲帧 |
 | 首帧（进程内自计时） | 1240ms（3 次抽样 1188/1344/1456，中位 ≈1344ms） | **333ms**（300px 宽，含启动时的首帧尺寸校验；上一轮 203ms 时未做校验） | Tauri 上轮内嵌形态 1023ms；素材外置多了一次磁盘读 + 自定义协议往返 |
 | 首帧（spawn → 窗口可见） | 1323ms | 486ms | 外部 `EnumWindows` 轮询 |
-| 稳定性 | 60s 存活、无白底/黑屏/崩溃 | 同左 | 两端截图见下 |
+| 稳定性 | 60s 存活、无白底/黑屏/崩溃 | 同左 | 两端测试截图只在本地留档（`build\screenshots\`，不入库） |
 
-![体积与内存对比](docs/screenshots/bench-compare.png)
+> 测试/验证截图一律不入库、不上传 GitHub；体积/内存对比图、桌面透明效果、右键菜单等截图仅本地 `build\screenshots\` 留档。
 
 差异来源：
 
@@ -201,17 +201,11 @@ powershell -NoProfile -File build\bench-chart.ps1
 
 ## 放桌面上的效果
 
-窗口裁剪（透明、无白底、无边框）：
+实测结论（截图不入库，本地 `build\screenshots\` 留档）：
 
-![透明效果](docs/screenshots/bench-tauri-idle.png)
-
-整屏（右下角）：
-
-![桌面](docs/screenshots/tauri-desktop.png)
-
-原生右键菜单：
-
-![右键菜单](docs/screenshots/tauri-menu.png)
+- 窗口裁剪：透明、无白底、无边框；
+- 整屏：贴在右下角，按 canvas 比例缩放；
+- 原生右键菜单：18 个动作 +「切换待机」「打开工坊」「缩放」「关于素材…」「退出」。
 
 ## 踩过的坑
 

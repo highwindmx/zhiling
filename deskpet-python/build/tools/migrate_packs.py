@@ -15,7 +15,7 @@ import glob, json, os, shutil, sys, time
 BASE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(BASE))              # deskpet-python/
 REPO = os.path.dirname(ROOT)              # 仓库根
-PACKS = os.path.join(REPO, "packs")
+PACKS = os.path.join(ROOT, "packs")
 LEGACY = os.path.join(PACKS, ".legacy")
 CANVAS = {"w": 576, "h": 530}
 FRAMES_CONF = {"format": "webp", "quality": 80, "fps": 24}

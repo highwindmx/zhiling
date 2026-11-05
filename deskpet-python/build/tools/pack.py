@@ -12,7 +12,10 @@ BASE = os.path.dirname(os.path.abspath(__file__))       # build/tools/
 BUILD = os.path.dirname(BASE)                            # build/
 ROOT = os.path.dirname(BUILD)                            # deskpet-python/
 REPO = os.path.dirname(ROOT)                             # 仓库根
-PACKS = os.path.join(REPO, "packs")
+# packs 跟 Python 版一起放在 deskpet-python/packs/（老仓库在仓库根，按优先级回退）
+PACKS = next(
+    (p for p in (os.path.join(ROOT, "packs"), os.path.join(REPO, "packs")) if os.path.isdir(p)),
+    os.path.join(ROOT, "packs"))
 CACHE = os.path.join(BUILD, "cache")
 DEFAULT_PACK = "maid-dsh"       # 多 pack 时由 packs/active.json 决定，这只是兜底
 # 新建 pack 的默认画布；画布是 pack 级属性，加载时以 manifest 为准，不在这里硬编码

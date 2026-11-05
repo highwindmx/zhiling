@@ -46,7 +46,12 @@ ACTIONS = []       # 动作 clip 的 id，按优先级排序
 IDLE_ID = "idle"
 LOG_PATH = None
 VERBOSE = False
-PACKS_ROOT = os.path.join(os.path.dirname(ROOT), "packs")
+# packs 默认随 Python 版一起放（deskpet-python/packs/），这样整个 Python 目录可整体搬走；
+# 老仓库（packs 在仓库根）仍能跑：按下面的优先级取第一个存在的目录。
+PACKS_ROOT = next(
+    (p for p in (os.path.join(ROOT, "packs"), os.path.join(os.path.dirname(ROOT), "packs"))
+     if os.path.isdir(p)),
+    os.path.join(ROOT, "packs"))
 
 
 def active_pack():

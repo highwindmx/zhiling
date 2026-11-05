@@ -1,9 +1,9 @@
 # deskpet-python · 桌宠（主线）
 
-透明、置顶、不抢焦点的桌面宠物。读取 `packs\<packId>\` 里的素材与状态映射，按 DSH 的
+透明、置顶、不抢焦点的桌面宠物。读取本目录下 `packs\<packId>\` 里的素材与状态映射，按 DSH 的
 `status/token/done/error` 事件切动画。**Python 版是主线，Tauri 版只是打包形态。**
 
-![工坊界面](../docs/screenshots/workshop-ui.png)
+> 测试/验证截图不入库、不上传 GitHub；要留证据就放本地 `build\screenshots\`（已 ignore）。
 
 ## 安装
 
@@ -31,16 +31,17 @@ uv run python pet.py --pack maid-basic   # 临时用另一个 pack
 ## 素材包
 
 ```
-packs\<packId>\
+packs\<packId>\                # 本目录内（deskpet-python\packs\）
   manifest.json      # 画布、角色、license、每段 fps/anchor/scale/offset
   clips.json         # 菜单顺序、中文名、type、defaultIdle
   state-map.json     # 10 个状态 → clipId（可热加载，去抖 800ms）
   frames\<clipId>\f0000.webp ...
 ```
 
+- **packs 位置**：默认 `deskpet-python\packs\`（随本目录一起，可整体搬走）。程序按 `deskpet-python\packs\` → 仓库根 `packs\` 的顺序找，第一个存在的就是它；老仓库不迁移也能跑。
 - `canvas` 是 **pack 级**属性（新建默认 576×530，可改）；同一 pack 内所有 clip 必须同尺寸，跨 pack 不能混用帧。加载时校验首帧尺寸，不一致会退出并列出所有出问题的段。
 - 切换 pack：改 `packs\active.json` 的 `{"pack": "..."}` 后**重启**宠物；窗口尺寸与右下边距按新 canvas 重算。
-- 详细规范：[docs/material-packs.md](../docs/material-packs.md)。
+- 详细规范：本地 `docs\material-packs.md`（docs 不入库、不推 GitHub）。
 
 ## 素材工坊
 
@@ -73,7 +74,7 @@ uv run python build\tools\workshop.py     # 或双击 workshop.bat（优先 uv�
 
 - `needs_decision` **只认 DSH 的 `attention` 事件**（`kind/options/timeoutSec`），没有事件就不播。启发式已否决，别再加。
 - 另有 15 段动作可手动换映射：真开心 `dsh_happy`、无奈状 `dsh_helpless`、看手机 `dsh_phone`、吃米饭 `dsh_rice`、举手提问 `dsh_handup`、高兴跳起 `dsh_cheer` 等。
-- 设计细节与 DSH 改动清单：[docs/action-conversation-mapping.md](../docs/action-conversation-mapping.md)。
+- 设计细节与 DSH 改动清单：本地 `docs\action-conversation-mapping.md`（docs 不入库、不推 GitHub）。
 
 ## 已知限制
 

@@ -5,7 +5,7 @@
 （disabled / cooldown / busy-hold）和两个提醒态的 repeat 机制。
 
 设计上刻意不依赖 Qt：播放动作通过回调传进来，方便脱离 GUI 单测：
-    python state_map.py packs/dsh/state-map.json          # 解析并打印每条规则
+    python state_map.py packs/maid-dsh/state-map.json      # 解析并打印每条规则
 """
 import json
 import os
@@ -305,5 +305,5 @@ def _print(path):
 if __name__ == "__main__":
     import sys
     root = os.path.dirname(os.path.abspath(__file__))          # deskpet-python/
-    dflt = os.path.join(os.path.dirname(root), "packs", "dsh", "state-map.json")
+    dflt = os.path.join(root, "packs", "maid-dsh", "state-map.json")
     _print(sys.argv[1] if len(sys.argv) > 1 else dflt)

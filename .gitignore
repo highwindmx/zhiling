@@ -20,7 +20,15 @@ deskpet-tauri/assets/
 deskpet-tauri/frontend-dist/
 
 # 工坊/素材包：帧与 mp4 走 Release 附件，不进 git（manifest 与 state-map/clips.json 例外）
-# 旧结构 packs/<packId>/frames_<clipId>/ 与新结构 packs/<packId>/frames/<clipId>/ 都忽略
+# packs 已迁到 deskpet-python/packs/；下面同时保留旧的仓库根 packs/ 规则，防止历史目录残留
+deskpet-python/packs/*/frames/
+deskpet-python/packs/**/frames/
+deskpet-python/packs/*/source/
+deskpet-python/packs/**/source/
+deskpet-python/packs/*/.backup/
+deskpet-python/packs/**/.backup/
+deskpet-python/packs/.legacy/
+deskpet-python/packs/*/posters/
 packs/*/frames/
 packs/**/frames/
 packs/*/source/
@@ -29,7 +37,18 @@ packs/*/.backup/
 packs/**/.backup/
 # 迁移前的旧清单备份（meta.json / 旧 manifest）
 packs/.legacy/
+deskpet-python/packs/.legacy/
 packs/*/posters/
+
+# 文档只在本地维护，不推到 GitHub（docs/ 下含设计文档与测试过程截图）
+docs/
+deskpet-python/docs/
+deskpet-tauri/docs/
+
+# 测试/验证截图一律不入库、不上传：截图放本地 build/screenshots/（任意层级同名目录都忽略）
+**/build/screenshots/
+screenshots/
+*_screenshot.png
 
 # 原始素材（用户手上的绿幕 mp4，来自即梦/海螺）
 material/

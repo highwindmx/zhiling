@@ -28,7 +28,10 @@ MINI = os.path.join(ROOT, "deskpet-python")
 SRC_FRONTEND = os.path.join(PROJECT, "frontend")
 DIST = os.path.join(PROJECT, "frontend-dist")        # tauri.conf.json 的 frontendDist
 ASSETS = os.path.join(PROJECT, "assets")             # exe 同级的运行期素材目录
-PACKS = os.path.join(ROOT, "packs")
+# packs 跟 Python 版一起放在 deskpet-python/packs/；老仓库在仓库根，按优先级回退
+PACKS = next(
+    (p for p in (os.path.join(MINI, "packs"), os.path.join(ROOT, "packs")) if os.path.isdir(p)),
+    os.path.join(MINI, "packs"))
 
 
 def active_pack():

@@ -2,7 +2,7 @@
 
 一只住在桌面右下角的绿幕抠像女仆：透明窗口、不抢焦点、按对话状态播动画。当前主线是 Python/Qt 版。
 
-![11 段动作总览](docs/screenshots/dsmaid-11-preview.png)
+> 测试/验证截图不入库、不上传 GitHub。要留证据就放本地 `build\screenshots\`（已 ignore）。
 
 ## 30 秒上手
 
@@ -17,20 +17,20 @@ uv run python pet.py --width 300
 ## 目录结构
 
 - `deskpet-python\` —— 主线：PyQt6 透明窗口、状态映射、素材工坊
-- `packs\` —— 素材包（`manifest.json` / `clips.json` / `state-map.json` 进 git，帧外置）
+- `deskpet-python\packs\` —— 素材包（`manifest.json` / `clips.json` / `state-map.json` 进 git，帧外置）
 - `material\` —— 原始绿幕 mp4（即梦/海螺生成，不入库）
-- `docs\` —— 素材包规范、状态映射设计、截图
+- `docs\` —— 素材包规范、状态映射设计（**只在本地维护，不入库、不推 GitHub**）
 - `deskpet-tauri\` —— Tauri 版（单 exe + 外部 `assets\`）
 
 ## 素材
 
-帧（`packs\<packId>\frames\`）和 mp4 都**不进 git**：按 `manifest.json` 记录的参数从 `material\` 重建，或从 Release 附件取。`packs` 是外置的，换素材不需要改代码、不需要重编译。
+帧（`deskpet-python\packs\<packId>\frames\`）和 mp4 都**不进 git**：按 `manifest.json` 记录的参数从 `material\` 重建，或从 Release 附件取。packs 随 Python 版一起放在 `deskpet-python\packs\`，换素材不需要改代码、不需要重编译。
 
 ## License
 
 代码：**GNU GPL v3.0**（全文见 `LICENSE`）。
 
-素材（`packs\`、`material\` 与生成帧）**不适用 GPL**，各自独立授权（当前两个 pack 为 `all-rights-reserved`，来源见各自 `manifest.json` 的 `license`）。不要把代码协议套到素材上，也不要把不同来源的素材混进同一个单一许可的 pack。
+素材（`deskpet-python\packs\`、`material\` 与生成帧）**不适用 GPL**，各自独立授权（当前两个 pack 为 `all-rights-reserved`，来源见各自 `manifest.json` 的 `license`）。不要把代码协议套到素材上，也不要把不同来源的素材混进同一个单一许可的 pack。
 
 ## deskpet-tauri
 
@@ -42,6 +42,8 @@ uv run python pet.py --width 300
 
 ## 详细文档
 
-- [deskpet-python/README.md](deskpet-python/README.md) —— 安装、运行、工坊、状态映射、排错
-- [docs/material-packs.md](docs/material-packs.md) —— 素材包规范（画布、license、分发、工坊流程）
-- [docs/action-conversation-mapping.md](docs/action-conversation-mapping.md) —— 10 状态映射与 DSH 事件契约
+`docs\` 只在本地、不进 git（历史里曾提交过，若已重写历史则一并消失）。本机阅读：
+
+- `deskpet-python\README.md` —— 安装、运行、工坊、状态映射、排错（随仓库入库）
+- `docs\material-packs.md` —— 素材包规范（画布、license、分发、工坊流程）
+- `docs\action-conversation-mapping.md` —— 10 状态映射与 DSH 事件契约
