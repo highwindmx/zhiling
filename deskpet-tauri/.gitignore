@@ -1,0 +1,19 @@
+# ---------- 构建产物 / 依赖 ----------
+node_modules/
+.npm-cache/
+src-tauri/target/
+src-tauri/target-build/
+src-tauri/gen/schemas/
+
+# ---------- 可从 material/*.mp4 或 deskpet-mini/frames_* 重建的中间产物 ----------
+build/raw/
+build/probe/*.png
+build/bench-logs/
+build/bench-result.json
+archive/
+frontend/assets/
+frontend-dist/
+
+# ---------- 运行时 ----------
+*.log
+EBWebView/

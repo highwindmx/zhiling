@@ -1,0 +1,12 @@
+[source.crates-io]
+replace-with = "ustc-http"
+
+[source.ustc-http]
+registry = "sparse+http://mirrors.ustc.edu.cn/crates.io-index/"
+
+[registries.ustc-http]
+index = "sparse+http://mirrors.ustc.edu.cn/crates.io-index/"
+
+[http]
+check-revoke = false
+multiplexing = false

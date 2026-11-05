@@ -1,0 +1,19 @@
+{
+  "name": "deskpet-tauri",
+  "private": true,
+  "version": "0.1.0",
+  "description": "蓝鲸女仆桌宠 · Tauri 2 版（零构建前端，与 deskpet-mini 行为等价）",
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "build:exe": "tauri build --no-bundle"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.5.1"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.5.1",
+    "vite": "^6.0.0"
+  }
+}

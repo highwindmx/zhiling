@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DeskPet</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%;
+      background: transparent;
+      overflow: hidden;
+      font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+      -webkit-user-select: none; user-select: none;
+      touch-action: none;
+    }
+
+    /* 两层 canvas：A 播当前帧，B 只在切换片段时淡出上一帧。
+       不用 <img src>：Chromium 会把加载过的每一帧解码位图留在 MemoryCache。 */
+    #stage { position: fixed; inset: 0; pointer-events: none; }
+    .layer {
+      position: absolute; inset: 0; display: block;
+      width: 100%; height: 100%;
+      pointer-events: none;
+    }
+    #layerA { opacity: 1; z-index: 1; }
+    #layerB { opacity: 0; z-index: 2; }
+  </style>
+</head>
+<body>
+  <div id="stage">
+    <canvas id="layerA" class="layer"></canvas>
+    <canvas id="layerB" class="layer"></canvas>
+  </div>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
