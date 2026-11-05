@@ -263,7 +263,7 @@ def _print(path):
     else:
         # pack 里可能只放了 state-map.json（并且 frames 由 pack 侧解析），这时用空集合
         arr = json.load(open(os.path.join(os.path.dirname(os.path.dirname(
-            os.path.abspath(__file__))), "deskpet-mini", "clips.json"),
+            os.path.abspath(__file__))), "deskpet-python", "clips.json"),
             encoding="utf-8"))["clips"]
     clips = {c["id"]: {"fps": 24, "count": 1,
                        "name": c.get("displayName") or c.get("name", "")} for c in arr}
@@ -277,6 +277,6 @@ def _print(path):
 
 if __name__ == "__main__":
     import sys
-    root = os.path.dirname(os.path.abspath(__file__))          # deskpet-mini/
+    root = os.path.dirname(os.path.abspath(__file__))          # deskpet-python/
     dflt = os.path.join(os.path.dirname(root), "packs", "dsh", "state-map.json")
     _print(sys.argv[1] if len(sys.argv) > 1 else dflt)

@@ -361,7 +361,7 @@ fn quit_app(app: tauri::AppHandle) {
     app.exit(0);
 }
 
-/// 素材工坊是 Python 工具（deskpet-mini/workshop.bat）。Tauri 版是单 exe，不依赖 Python：
+/// 素材工坊是 Python 工具（deskpet-python/workshop.bat）。Tauri 版是单 exe，不依赖 Python：
 /// 能找到 workshop.bat 就拉起来，找不到就把原因回给前端提示，不静默失败、也不把工坊重写成 Rust。
 fn find_workshop() -> Option<PathBuf> {
     let mut cands: Vec<PathBuf> = Vec::new();
@@ -369,19 +369,19 @@ fn find_workshop() -> Option<PathBuf> {
         cands.push(PathBuf::from(p));
     }
     if let Some(root) = ASSET_ROOT.get() {
-        // exe 同级 assets/ → 仓库 deskpet-mini/（开发布局）
-        cands.push(root.join("..").join("deskpet-mini").join("workshop.bat"));
+        // exe 同级 assets/ → 仓库 deskpet-python/（开发布局）
+        cands.push(root.join("..").join("deskpet-python").join("workshop.bat"));
         cands.push(root.join("workshop.bat"));
     }
     if let Ok(cwd) = std::env::current_dir() {
-        cands.push(cwd.join("deskpet-mini").join("workshop.bat"));
+        cands.push(cwd.join("deskpet-python").join("workshop.bat"));
         cands.push(cwd.join("workshop.bat"));
-        cands.push(cwd.join("..").join("deskpet-mini").join("workshop.bat"));
+        cands.push(cwd.join("..").join("deskpet-python").join("workshop.bat"));
     }
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
             cands.push(dir.join("workshop.bat"));
-            cands.push(dir.join("deskpet-mini").join("workshop.bat"));
+            cands.push(dir.join("deskpet-python").join("workshop.bat"));
         }
     }
     cands.into_iter().find(|p| p.is_file())
@@ -391,8 +391,8 @@ fn find_workshop() -> Option<PathBuf> {
 fn open_workshop() -> Result<String, String> {
     let p = find_workshop().ok_or_else(|| {
         "找不到 workshop.bat：素材工坊是 Python 工具，Tauri 版单 exe 不带 Python。\
-把 deskpet-mini/workshop.bat 放到 assets 同级，或设置环境变量 DESKPET_WORKSHOP 指向它；\
-也可以直接双击 deskpet-mini\\workshop.bat。"
+把 deskpet-python/workshop.bat 放到 assets 同级，或设置环境变量 DESKPET_WORKSHOP 指向它；\
+也可以直接双击 deskpet-python\\workshop.bat。"
             .to_string()
     })?;
     log_line(&format!("workshop_launch path={}", p.display()));

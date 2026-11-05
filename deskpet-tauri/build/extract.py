@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Extract + chroma-key the 4 green-screen material clips into transparent frame
-sequences (WebP lossless w/ alpha) and emit clips.json. Mirrors deskpet-mini's
+sequences (WebP lossless w/ alpha) and emit clips.json. Mirrors deskpet-python's
 frame-sequence layout so the Tauri frontend can load CLIPS the same way pet.py does.
 """
 import os, subprocess, json, shutil
@@ -10,7 +10,7 @@ import numpy as np
 HERE = os.path.dirname(os.path.abspath(__file__))
 PROJECT = os.path.dirname(HERE)                       # deskpet-tauri/
 ROOT = os.path.dirname(PROJECT)                       # zhiling/
-FF = os.path.join(ROOT, r"deskpet-mini", ".venv", "Lib", "site-packages",
+FF = os.path.join(ROOT, r"deskpet-python", ".venv", "Lib", "site-packages",
                   "imageio_ffmpeg", "binaries", "ffmpeg-win-x86_64-v9.0.2.exe")
 MAT = os.path.join(ROOT, "material")
 # 无损原帧只作为中间产物，留在 frontend/ 之外，避免被 Tauri 打进 exe。

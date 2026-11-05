@@ -1,4 +1,4 @@
-﻿<#
+<#
  从 build/bench-result.json 画一张体积/内存/CPU/首帧的对比图，输出 docs/screenshots/bench-compare.png。
  只用 .NET System.Drawing，不引第三方库。
 
@@ -35,7 +35,7 @@ $fHead = New-Object System.Drawing.Font('Microsoft YaHei', 13, [System.Drawing.F
 $fBody = New-Object System.Drawing.Font('Microsoft YaHei', 11)
 $fSmall = New-Object System.Drawing.Font('Microsoft YaHei', 10)
 
-$g.DrawString('deskpet-tauri (Tauri/WebView2) vs deskpet-mini (PyQt6)', $fTitle, (New-Object System.Drawing.SolidBrush($ink)), 40, 24)
+$g.DrawString('deskpet-tauri (Tauri/WebView2) vs deskpet-python (PyQt6)', $fTitle, (New-Object System.Drawing.SolidBrush($ink)), 40, 24)
 $g.DrawString(("同窗口尺寸（屏幕宽 15% = 192×177 逻辑像素）、同素材（mini 的 4 段 WebP q80）、待机循环采样 {0}s" -f $r.seconds), $fSmall, (New-Object System.Drawing.SolidBrush($sub)), 42, 58)
 
 function Draw-Panel {

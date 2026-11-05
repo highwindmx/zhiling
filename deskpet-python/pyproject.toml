@@ -1,5 +1,5 @@
 [project]
-name = "deskpet-mini"
+name = "deskpet-python"
 version = "0.2.0"
 description = "桌宠（PyQt6 版）：透明窗口 + 状态映射 + 素材工坊"
 requires-python = ">=3.11"

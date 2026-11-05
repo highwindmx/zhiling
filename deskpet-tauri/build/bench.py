@@ -1,4 +1,4 @@
-"""同口径对比 deskpet-tauri(Tauri/WebView2) 与 deskpet-mini(PyQt6) 的体积、内存、CPU、首帧。
+"""同口径对比 deskpet-tauri(Tauri/WebView2) 与 deskpet-python(PyQt6) 的体积、内存、CPU、首帧。
 
 只用标准库 + ctypes 读 Win32 计数，避免额外依赖：
   * 体积：文件/目录字节数（分"仅程序本体"与"含运行时依赖"两列）
@@ -25,7 +25,7 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 PROJECT = os.path.dirname(HERE)
 ROOT = os.path.dirname(PROJECT)
-MINI = os.path.join(ROOT, "deskpet-mini")
+MINI = os.path.join(ROOT, "deskpet-python")
 SHOTS = os.path.join(PROJECT, "docs", "screenshots")
 TMP = os.environ.get("TEMP", r"C:\Users\KaishengMao\AppData\Local\Temp")
 LOGS = os.path.join(HERE, "bench-logs")

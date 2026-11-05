@@ -115,7 +115,7 @@ def build_clip(spec, log=print):
     """按 spec 生成一个新 clip：抽帧 → 抠像 → 自动缩放贴合画布 → 存盘 → 写 meta。
 
     spec 字段：id, video, params(dict), fps?, width?, fmt?, quality?, crop?,
-              out_dir?（给了就写到这里，不写 deskpet-mini/meta.json，供 pack 用）
+              out_dir?（给了就写到这里，不写 deskpet-python/meta.json，供 pack 用）
     画布比例固定 826:760（与 frames_idle/frames_action 一致）。
     """
     cid = spec["id"]
@@ -194,7 +194,7 @@ def build_clip(spec, log=print):
             "fps": fps, "format": fmt, "out_dir": out_dir,
             "crop": list(crop) if crop else None}
     if spec.get("out_dir"):
-        # pack 模式：清单由调用方写进 manifest，这里不碰 deskpet-mini/meta.json
+        # pack 模式：清单由调用方写进 manifest，这里不碰 deskpet-python/meta.json
         log("frames_%s：%d 帧，%.2f MB，%dx%d（scale %.3f，offset %s，脚底 y=%d）"
             % (cid, n, total / 1e6, out_w, oh, scale, [ox, oy], foot[1]))
         return info

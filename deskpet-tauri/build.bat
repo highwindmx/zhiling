@@ -34,7 +34,7 @@ python build\prepare_assets.py --frontend
 if errorlevel 1 goto fail_frontend
 
 echo.
-echo [2/3] 准备素材（deskpet-mini -> assets\，运行期用，失败不中断编译）
+echo [2/3] 准备素材（deskpet-python -> assets\，运行期用，失败不中断编译）
 python build\prepare_assets.py --assets
 if errorlevel 1 echo [警告] 素材准备失败：编译继续，但运行前要自己补 assets\ 目录（见上面输出）
 

@@ -1,5 +1,5 @@
 // DeskPet Tauri 前端：透明桌宠播放器。
-// 与 deskpet-mini/pet.py 行为对齐：待机循环、动作段播完回待机、交叉淡化、
+// 与 deskpet-python/pet.py 行为对齐：待机循环、动作段播完回待机、交叉淡化、
 // 拖动、双击轮播动作、右键三档尺寸 / 动作 / 退出、Esc 退出。
 //
 // 内存要点：帧用 fetch + createImageBitmap 解码，位图由 LRU 自己管，
@@ -61,7 +61,7 @@ function logEvent(msg) {
 
 // ---- 帧清单 --------------------------------------------------------------
 // clips.json（顺序/类型/名字/defaultIdle）+ meta.json（目录/帧数/fps/格式/画布）
-// 与 deskpet-mini 读的是同一份文件，字段语义完全一致，只是这里多了一步合并。
+// 与 deskpet-python 读的是同一份文件，字段语义完全一致，只是这里多了一步合并。
 async function fetchJson(rel) {
   const res = await fetch(assetUrl(rel), { cache: "no-store" });
   if (!res.ok) throw new Error(`${rel} HTTP ${res.status}（${assetUrl(rel)}）`);
@@ -527,7 +527,7 @@ window.addEventListener("keydown", (e) => {
 
 // ---- 状态映射 --------------------------------------------------------------
 // 配置：assets/state-map.json（源文件 repo 的 packs/<packId>/state-map.json）。
-// 与 deskpet-mini/state_map.py 同一套语义：每个可观测状态 → 一个 clip，
+// 与 deskpet-python/state_map.py 同一套语义：每个可观测状态 → 一个 clip，
 // 播放前过 冷却 / 占用（busy|hold）/ 禁用 三道闸；priority 用 0~100 口径。
 // 两个提醒态（awaiting_user / needs_decision）额外支持 repeat：
 //   once     —— 只播一次，之后静默回待机（不常驻循环）

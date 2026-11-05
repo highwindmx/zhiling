@@ -2,7 +2,7 @@
   "name": "deskpet-tauri",
   "private": true,
   "version": "0.1.0",
-  "description": "蓝鲸女仆桌宠 · Tauri 2 版（零构建前端，与 deskpet-mini 行为等价）",
+  "description": "蓝鲸女仆桌宠 · Tauri 2 版（零构建前端，与 deskpet-python 行为等价）",
   "scripts": {
     "tauri": "tauri",
     "dev": "tauri dev",

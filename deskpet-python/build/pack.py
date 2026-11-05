@@ -4,12 +4,12 @@
 - packs/<packId>/manifest.json   角色名、画布、license、每个 clip 的 scale/offset/anchor/loop/priority
 - packs/<packId>/frames/<clipId>/ 帧序列（webp/png），路径相对 pack 根
 - packs/<packId>/state-map.json  状态映射（可缺省，缺省用内置默认）
-- clips.json 由 manifest 派生（deskpet-mini/clips.json），两版桌宠都只读它，字段语义不分叉
+- clips.json 由 manifest 派生（deskpet-python/clips.json），两版桌宠都只读它，字段语义不分叉
 """
 import glob, json, os, shutil, time
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(BASE)              # deskpet-mini/
+ROOT = os.path.dirname(BASE)              # deskpet-python/
 REPO = os.path.dirname(ROOT)              # 仓库根
 PACKS = os.path.join(REPO, "packs")
 DEFAULT_PACK = "maid-dsh"       # 多 pack 时由 packs/active.json 决定，这只是兜底
@@ -129,9 +129,9 @@ def backup_frames(pack, cid, keep=3):
 
 
 def sync_runtime(pack=None, dst=None):
-    """manifest → packs/<pack>/clips.json（段级清单）+ deskpet-mini/clips.json（runtime 索引）。
+    """manifest → packs/<pack>/clips.json（段级清单）+ deskpet-python/clips.json（runtime 索引）。
 
-    两版桌宠都只读 clips.json；raw 目录结构不再扁平到 deskpet-mini 下。
+    两版桌宠都只读 clips.json；raw 目录结构不再扁平到 deskpet-python 下。
     """
     pack = pack or active_pack()
     data = load_manifest(pack)
@@ -163,7 +163,7 @@ def sync_runtime(pack=None, dst=None):
 
 
 def migrate_from_legacy(pack=DEFAULT_PACK):
-    """把 deskpet-mini/clips.json + meta.json 迁成 packs/<pack>/manifest.json（一次性）。"""
+    """把 deskpet-python/clips.json + meta.json 迁成 packs/<pack>/manifest.json（一次性）。"""
     clips = json.load(open(os.path.join(ROOT, "clips.json"), encoding="utf-8"))
     meta = json.load(open(os.path.join(ROOT, "meta.json"), encoding="utf-8"))
     mclips = meta.get("clips", {})

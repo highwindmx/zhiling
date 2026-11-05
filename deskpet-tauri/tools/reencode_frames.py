@@ -6,7 +6,7 @@ extract.py 默认 lossless=True 且保留原始裁切尺寸（约 1000x712），
 
 - 统一画布 640x456（与待机段 1000x712 同比例），各段等比缩放后底边居中贴合，
   消除切换动作时人物大小/位置的跳变；
-- 有损 WebP q82（带 alpha），与 deskpet-mini 的 q80 画质策略对齐；
+- 有损 WebP q82（带 alpha），与 deskpet-python 的 q80 画质策略对齐；
 - 输出新的 clips.json（附 canvas / size / quality 字段）。
 
 只写 frontend/assets/（最终运行资源），无损原帧留在 archive/raw-lossless-frames/assets/

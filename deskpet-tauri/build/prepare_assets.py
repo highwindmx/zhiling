@@ -4,7 +4,7 @@
 - 前端暂存（--frontend）：把 frontend/index.html + frontend/src 复制到 frontend-dist/。
   这是 tauri.conf.json 的 frontendDist，会被编译进 exe（只有几十 KB 的 HTML/JS）。
   这一步是编译前必须的，因为它就是 exe 里的页面本体。
-- 素材准备（--assets）：把 deskpet-mini 的 clips.json / meta.json / frames_* 复制到
+- 素材准备（--assets）：把 deskpet-python 的 clips.json / meta.json / frames_* 复制到
   deskpet-tauri/assets/。这一步**不是**编译前必须的：exe 运行时按
   DESKPET_ASSETS 或「exe 同级的 assets/」读盘，换素材不用重新编译。
 
@@ -24,7 +24,7 @@ import shutil
 HERE = os.path.dirname(os.path.abspath(__file__))
 PROJECT = os.path.dirname(HERE)
 ROOT = os.path.dirname(PROJECT)
-MINI = os.path.join(ROOT, "deskpet-mini")
+MINI = os.path.join(ROOT, "deskpet-python")
 SRC_FRONTEND = os.path.join(PROJECT, "frontend")
 DIST = os.path.join(PROJECT, "frontend-dist")        # tauri.conf.json 的 frontendDist
 ASSETS = os.path.join(PROJECT, "assets")             # exe 同级的运行期素材目录
@@ -93,7 +93,7 @@ def prepare_assets(strict):
     for cid in ids:
         # dir 以 clips.json 为准（由 manifest 派生，工坊新加的 clip 也在里面）；meta.json 只作兜底
         d = clips_by_id[cid].get("dir") or meta_clips.get(cid, {}).get("dir", "frames_" + cid)
-        # 帧目录两种位置都认：packs/<pack>/frames/<clipId>（新格式）/ deskpet-mini/frames_*（旧格式）
+        # 帧目录两种位置都认：packs/<pack>/frames/<clipId>（新格式）/ deskpet-python/frames_*（旧格式）
         src = os.path.join(PACKS, PACK_ID or "", d) if PACK_ID else ""
         if not src or not os.path.isdir(src):
             src = os.path.join(MINI, d)
@@ -115,7 +115,7 @@ def prepare_assets(strict):
 
     print(f"assets: {len(ids) - len(missing)}/{len(ids)} 段，合计 {total/1e6:.1f} MB -> {ASSETS}")
     if missing:
-        msg = "以下 clip 没有帧目录（先跑 deskpet-mini/build/build_*.py）：" + ", ".join(missing)
+        msg = "以下 clip 没有帧目录（先跑 deskpet-python/build/build_*.py）：" + ", ".join(missing)
         if strict:
             raise SystemExit(msg)
         print("[警告] " + msg)

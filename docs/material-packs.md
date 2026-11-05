@@ -1,6 +1,6 @@
 # 素材包（Material Pack）规范
 
-桌宠的"素材"不再是一个扁平 `frames_<clipId>` 目录，而是 **pack**：一个可替换、可分发、可多角色并存的素材包。两版桌宠（Qt 的 `deskpet-mini`、Tauri 的 `deskpet-tauri`）读同一份 pack，字段语义不许分叉。
+桌宠的"素材"不再是一个扁平 `frames_<clipId>` 目录，而是 **pack**：一个可替换、可分发、可多角色并存的素材包。两版桌宠（Qt 的 `deskpet-python`、Tauri 的 `deskpet-tauri`）读同一份 pack，字段语义不许分叉。
 
 ---
 
@@ -40,7 +40,7 @@ packs/
 
 ### 迁移（老仓库）
 
-老仓库把帧放在 `deskpet-mini/frames_<clipId>/`。迁移脚本幂等、可先干跑：
+老仓库把帧放在 `deskpet-python/frames_<clipId>/`。迁移脚本幂等、可先干跑：
 
 ```bat
 uv run python build\migrate_packs.py --dry-run   :: 打印计划
@@ -143,14 +143,14 @@ uv run python build\migrate_packs.py             :: 移动（不复制）
 
 ## 4. 接入流程：从绿幕 mp4 到菜单里的一个动作
 
-工坊（`deskpet-mini\build\workshop.py`）就是 **素材包编辑器**：它现在的输出已经是 `packs/<packId>/frames/<clipId>/` + 合并 `manifest.json`，不再写独立的 `frames_<clipId>`。不需要额外做"导出为 pack"按钮——工坊的导出目标本来就是 pack；要换系列就"新建 pack"。
+工坊（`deskpet-python\build\workshop.py`）就是 **素材包编辑器**：它现在的输出已经是 `packs/<packId>/frames/<clipId>/` + 合并 `manifest.json`，不再写独立的 `frames_<clipId>`。不需要额外做"导出为 pack"按钮——工坊的导出目标本来就是 pack；要换系列就"新建 pack"。
 
 ```
 ① 视频拖进工坊  →  ② 预览/裁边/抠像  →  ③ 选目标 pack，点开始生成
                                               ↓
                          packs/<packId>/frames/<clipId>/f0001.webp ...
                          packs/<packId>/manifest.json 更新（scale/offset/anchor/fps/count）
-                         packs/<packId>/clips.json 同步（active pack 时 deskpet-mini/clips.json 也同步）
+                         packs/<packId>/clips.json 同步（active pack 时 deskpet-python/clips.json 也同步）
                                               ↓
                          右键菜单出现「动作：<displayName>」
                                               ↓
@@ -160,7 +160,7 @@ uv run python build\migrate_packs.py             :: 移动（不复制）
 **逐步骤（含界面位置）**：
 
 1. **拿到素材**：即梦/海螺生成绿幕 mp4，通常 1080×1920 或带黑边/水印。放进 `material/<系列>/`（该目录已 gitignore）。
-2. **打开工坊**：宠物右键「素材工坊…」，或双击 `deskpet-mini\workshop.bat`。
+2. **打开工坊**：宠物右键「素材工坊…」，或双击 `deskpet-python\workshop.bat`。
    > 截图占位：`docs/screenshots/workshop-ui.png`（三步布局总览）
 3. **① 导入**：拖入一个或多个 mp4（支持多选排队）；列表会显示时长/分辨率/fps；填中文显示名（如「炸毛」），`clipId` 自动生成 `zha_mao`（装不上 pypinyin 就 `clip_01` 递增），灰色只读；要手改去「高级参数」。
 4. **② 抠像**：默认 `自动裁黑边` 已开（裁掉区域在预览里画半透明红遮罩，能看出它裁了什么）；`取背景色（点四角取样）` 一键取绿幕色相；左边 `原片 / 抠像后 / alpha` 三视图 + 棋盘格，帧滑杆挑帧细看。
@@ -174,7 +174,7 @@ uv run python build\migrate_packs.py             :: 移动（不复制）
 
 重抠同一段：改参数后仍用同一 `clipId` 生成 → **覆盖**旧帧，旧帧移到 `packs/<packId>/.backup/<clipId>_<时间戳>/`（留最近 3 份，可手动回滚），不产生 `_v2` 目录。
 
-**工坊不属于运行时依赖**：桌宠运行只需要 `packs/<packId>/frames/`。Tauri 版是单 exe、不带 Python，所以它的菜单里点「素材工坊…」只在能找到 `workshop.bat` 时才拉起，否则提示"该功能需要 Python 版工具，请直接双击 deskpet-mini\workshop.bat"（可通过 `DESKPET_WORKSHOP` 环境变量指定路径）。我们没有把工坊重写成 Rust。
+**工坊不属于运行时依赖**：桌宠运行只需要 `packs/<packId>/frames/`。Tauri 版是单 exe、不带 Python，所以它的菜单里点「素材工坊…」只在能找到 `workshop.bat` 时才拉起，否则提示"该功能需要 Python 版工具，请直接双击 deskpet-python\workshop.bat"（可通过 `DESKPET_WORKSHOP` 环境变量指定路径）。我们没有把工坊重写成 Rust。
 
 ---
 

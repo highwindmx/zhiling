@@ -5,7 +5,7 @@ src-tauri/target/
 src-tauri/target-build/
 src-tauri/gen/schemas/
 
-# ---------- 可从 material/*.mp4 或 deskpet-mini/frames_* 重建的中间产物 ----------
+# ---------- 可从 material/*.mp4 或 deskpet-python/frames_* 重建的中间产物 ----------
 build/raw/
 build/probe/*.png
 build/bench-logs/

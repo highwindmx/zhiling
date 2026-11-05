@@ -1,6 +1,6 @@
 """旧扁平目录 → pack 结构的一次性迁移（幂等，可 --dry-run）。
 
-旧：deskpet-mini/frames_<id>/ + meta.json + clips.json
+旧：deskpet-python/frames_<id>/ + meta.json + clips.json
 新：packs/maid-basic/{manifest.json,clips.json,frames/<id>/}
     packs/maid-dsh/{manifest.json,clips.json,frames/<id>/,state-map.json}
 
@@ -13,7 +13,7 @@
 import glob, json, os, shutil, sys, time
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(BASE)              # deskpet-mini/
+ROOT = os.path.dirname(BASE)              # deskpet-python/
 REPO = os.path.dirname(ROOT)              # 仓库根
 PACKS = os.path.join(REPO, "packs")
 LEGACY = os.path.join(PACKS, ".legacy")
@@ -86,7 +86,7 @@ def main():
     old_clips = load_json(os.path.join(ROOT, "clips.json"))
     old_meta = load_json(os.path.join(ROOT, "meta.json"), {"clips": {}})
     if not old_clips:
-        print("没有 deskpet-mini/clips.json，跳过")
+        print("没有 deskpet-python/clips.json，跳过")
         return 0
     meta = old_meta.get("clips", {})
     plans = {}

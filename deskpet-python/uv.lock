@@ -7,7 +7,7 @@ resolution-markers = [
 ]
 
 [[package]]
-name = "deskpet-mini"
+name = "deskpet-python"
 version = "0.2.0"
 source = { virtual = "." }
 dependencies = [

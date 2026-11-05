@@ -1,4 +1,4 @@
-# 桌宠 · 蓝鲸女仆（deskpet-mini）
+# 桌宠 · 蓝鲸女仆（deskpet-python）
 
 把绿幕视频抠成透明帧序列，用 PyQt6 无边框窗口贴在桌面上循环播放。双击宠物按顺序播放下一个动作段，播完自动交叉淡化回待机；右键可以直接选某个动作。
 
@@ -34,7 +34,7 @@
 前置：Windows 10/11 + Python 3.11 以上。仓库里**不含帧序列**（11 段约 53MB，故意不入库），第一次跑要先重建或从 Release 附件下载，大约几分钟。
 
 ```bat
-cd deskpet-mini
+cd deskpet-python
 
 :: 1) 装依赖（推荐 uv：uv.lock 保证版本一致）
 uv sync
@@ -61,13 +61,13 @@ uv run python pet.py --log build\startup.log   :: 记录首帧时间/内存，�
 
 ### 安装依赖（uv 优先）
 
-- **uv**：`uv sync`（在 `deskpet-mini` 目录下）。`uv.lock` 已入库，能复现同一套版本；`uv sync` 默认就写进 `.venv`，**只有这一个环境**。`pyproject.toml` 里设了 `link-mode = "copy"`：本机 uv 缓存带着 `Everyone:(DENY)(DC)` 的 ACL，默认 hardlink 会让 `.venv` 里的文件也继承它，以后删环境会「拒绝访问」。
+- **uv**：`uv sync`（在 `deskpet-python` 目录下）。`uv.lock` 已入库，能复现同一套版本；`uv sync` 默认就写进 `.venv`，**只有这一个环境**。`pyproject.toml` 里设了 `link-mode = "copy"`：本机 uv 缓存带着 `Everyone:(DENY)(DC)` 的 ACL，默认 hardlink 会让 `.venv` 里的文件也继承它，以后删环境会「拒绝访问」。
 - **pip 备选（仅当没有 uv）**：`python -m venv .venv` → `.venv\Scripts\pip install -r requirements.txt`。
 - `.venv\requirements.txt` 标为 **legacy**：uv 路径不需要它，别两条路径混用（同一个解释器装两遍容易版本打架）。
 
 ### 素材目录与迁移
 
-帧现在按 pack 组织：`packs/<packId>/{manifest.json, clips.json, frames/<clipId>/}`。老仓库里扁平的 `deskpet-mini/frames_*` 还没迁就运行 `uv run python build\migrate_packs.py --dry-run` 看计划，再去掉 `--dry-run` 执行（移动不复制，旧清单备份到 `packs/.legacy/`）。没迁移也能跑：程序先找 `packs/`，找不到才回退旧的 `frames_*` 并在启动日志里提示。
+帧现在按 pack 组织：`packs/<packId>/{manifest.json, clips.json, frames/<clipId>/}`。老仓库里扁平的 `deskpet-python/frames_*` 还没迁就运行 `uv run python build\migrate_packs.py --dry-run` 看计划，再去掉 `--dry-run` 执行（移动不复制，旧清单备份到 `packs/.legacy/`）。没迁移也能跑：程序先找 `packs/`，找不到才回退旧的 `frames_*` 并在启动日志里提示。
 
 当前有两个 pack：
 
@@ -125,7 +125,7 @@ uv run python pet.py --log build\startup.log   :: 记录首帧时间/内存，�
 
 ```
 zhiling/
-├─ deskpet-mini/            主程序
+├─ deskpet-python/            主程序
 │  ├─ pet.py                运行时代码（窗口、播放、拖动、菜单）
 │  ├─ state_map.py          状态映射（10 状态、三道闸、提醒态、20 条调试日志）
 │  ├─ run.bat               双击启动宠物
@@ -200,7 +200,7 @@ q80 的判断依据：同帧在 576px（磁盘原尺寸 1:1）、384px（大档�
 
 ## 素材工坊（图形界面 = 素材包编辑器）
 
-不想改代码调参数时用它。双击 `deskpet-mini\workshop.bat`（也可以从宠物右键菜单「素材工坊…」拉起）。工坊优先 `uv run`，没有 uv 用 `.venv`；两者都没有会明确提示怎么装，不会静默失败。
+不想改代码调参数时用它。双击 `deskpet-python\workshop.bat`（也可以从宠物右键菜单「素材工坊…」拉起）。工坊优先 `uv run`，没有 uv 用 `.venv`；两者都没有会明确提示怎么装，不会静默失败。
 
 界面压成三步，一屏三块：
 
@@ -210,7 +210,7 @@ q80 的判断依据：同帧在 576px（磁盘原尺寸 1:1）、384px（大档�
 
 导出参数（画布 576×530、24fps、WebP q80）是 **pack 级固定值**，写在 `packs/<packId>/manifest.json`，导出页不再出现。画布只在「新建素材包」弹窗里问一次（packId / 角色名 / 画布），改画布会让 pack 里所有 clip 都要重抠，没有特别理由别改。
 
-生成直接写进 `packs\<packId>\frames\<clipId>\`，同时合并 `manifest.json`；目标 pack 是当前 active pack 时会同步 `deskpet-mini\clips.json`。同 `clipId` 重抠**覆盖**旧帧（旧帧进 `packs\<packId>\.backup\`，留最近 3 份），不产生 `_v2` 目录。
+生成直接写进 `packs\<packId>\frames\<clipId>\`，同时合并 `manifest.json`；目标 pack 是当前 active pack 时会同步 `deskpet-python\clips.json`。同 `clipId` 重抠**覆盖**旧帧（旧帧进 `packs\<packId>\.backup\`，留最近 3 份），不产生 `_v2` 目录。
 
 **默认值必须一次跑通**：拖进一个新视频、什么都不改、点生成，结果可用。验收脚本 `build\_accept.py` 用得意状（30fps→24）和炸毛（黑边+绿幕）各跑一遍，结果见 `docs\material-packs.md`。
 
@@ -356,7 +356,7 @@ q80 的判断依据：同帧在 576px（磁盘原尺寸 1:1）、384px（大档�
 想换回旧待机只要改 `defaultIdle` 一行。右键菜单按 `displayName` 列出全部动作（之前无奈/吃米饭看不到就是因为没登记）。
 
 ```bat
-cd deskpet-mini
+cd deskpet-python
 .venv\Scripts\python.exe build\build_dsmaid.py                 :: 全部 11 段
 .venv\Scripts\python.exe build\build_dsmaid.py dsh_shock       :: 只重建某一段
 ```

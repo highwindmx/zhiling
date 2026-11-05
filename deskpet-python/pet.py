@@ -107,9 +107,9 @@ def load_clips():
 
 
 def frames_dir(m):
-    """帧目录解析：packs/<pack>/<dir>（新格式）→ deskpet-mini/<dir>（旧格式，兼容）。
+    """帧目录解析：packs/<pack>/<dir>（新格式）→ deskpet-python/<dir>（旧格式，兼容）。
 
-    新结构是 packs/<pack>/frames/<clipId>；没迁移过的老仓库还在 deskpet-mini/frames_*，
+    新结构是 packs/<pack>/frames/<clipId>；没迁移过的老仓库还在 deskpet-python/frames_*，
     两个位置都认，避免为了目录结构把已有帧搬来搬去（搬完 pack 里就只认第一处）。
     """
     d = m["dir"]
@@ -538,7 +538,7 @@ def main():
     if PACK_ID:
         log("pack=%s（packs/%s），%d 段，待机=%s" % (PACK_ID, PACK_ID, len(CLIPS), IDLE_ID))
     else:
-        log("packs/ 里没有可用素材包，回退旧 deskpet-mini/frames_* 目录；"
+        log("packs/ 里没有可用素材包，回退旧 deskpet-python/frames_* 目录；"
             "建议运行 python build/migrate_packs.py 迁移到 packs/<packId>/")
 
     app = QApplication(sys.argv)

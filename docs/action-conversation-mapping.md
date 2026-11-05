@@ -299,11 +299,11 @@ def request_play(clip_id, priority, min_play_ms=0, cooldown_s=0, interruptible=T
 
 ## 8. 亲密度 / 情绪（只定义，不实现）
 
-现状（已核实）：`deskpet-mini` **没有任何持久化**——`pet.py` 里没有 SQLite、没有 QSettings，`meta.json`/`clips.json` 只描述素材；尺寸档、当前 clip 都是进程内状态，重启归零。tauri 侧同理（无本地库）。
+现状（已核实）：`deskpet-python` **没有任何持久化**——`pet.py` 里没有 SQLite、没有 QSettings，`meta.json`/`clips.json` 只描述素材；尺寸档、当前 clip 都是进程内状态，重启归零。tauri 侧同理（无本地库）。
 
 建议（下一轮实现）：
 
-- 位置：`deskpet-mini\state\pet_state.json`（tauri 复用同一路径，两版共读，谁先写谁赢 + 文件锁）。
+- 位置：`deskpet-python\state\pet_state.json`（tauri 复用同一路径，两版共读，谁先写谁赢 + 文件锁）。
 - 字段：
 ```json
 {"v":1,"affection":60,"mood":"calm","last_seen":"2026-11-05T12:00:00+08:00",
@@ -548,7 +548,7 @@ L3 显式指令  >  对话阶段事件（done/error/tool_call）  >  用户规�
 
 | 项 | 方案 |
 |---|---|
-| 文件位置 | `deskpet-mini\rules\actions.json`（**内置**，随仓库走，只读）；`%APPDATA%\deskpet\rules\user.json`（**用户**，可写，覆盖/追加内置）。两份都加载，按 `id` 去重，用户版优先 |
+| 文件位置 | `deskpet-python\rules\actions.json`（**内置**，随仓库走，只读）；`%APPDATA%\deskpet\rules\user.json`（**用户**，可写，覆盖/追加内置）。两份都加载，按 `id` 去重，用户版优先 |
 | 热加载 | `QFileSystemWatcher`（mini）/ `notify` crate（tauri）监听 user 文件；**去抖 800ms**；解析失败 → 保留上一版 + 状态提示，不重启进程 |
 | 配置界面最小形态 | 一个列表：每行 `[开关] 关键词 | 动作(下拉，选项来自 clips.json 已登记项) | 优先级(数字) | 冷却(秒) | [删除]`；底部 `[新增] [保存并生效]`。**不做可视化流程图/节点编辑器** |
 | 校验 | 逐条 `try/catch`：`clipId` 不在 clips.json → 该条禁用并提示"规则 r_phone：clipId 'dsh_phone' 不存在，可用：idle/action/action2/action3"；正则编译失败 → 该条禁用并提示具体位置；`priority` 越界（<0 或 >100）→ 该条禁用。**一条坏规则只废自己，不废整个文件** |

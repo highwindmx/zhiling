@@ -1,6 +1,6 @@
 # 桌宠 · 蓝鲸女仆（deskpet-tauri）
 
-Tauri 2 + 零构建前端的透明桌宠，与 [deskpet-mini](../deskpet-mini/)（PyQt6）**行为等价**：同一份素材、同一套尺寸/锚点换算、同样的拖动 / 双击轮播动作 / 原生右键菜单 / Esc 退出。这个目录本轮的目标是"跑起来 + 可测"，不含 DSH 对话桥接、托盘动画、多角色、AI 功能。
+Tauri 2 + 零构建前端的透明桌宠，与 [deskpet-python](../deskpet-python/)（PyQt6）**行为等价**：同一份素材、同一套尺寸/锚点换算、同样的拖动 / 双击轮播动作 / 原生右键菜单 / Esc 退出。这个目录本轮的目标是"跑起来 + 可测"，不含 DSH 对话桥接、托盘动画、多角色、AI 功能。
 
 ## 从零构建（`Cargo.toml` 在哪、要跑哪几条命令）
 
@@ -13,7 +13,7 @@ Tauri 2 + 零构建前端的透明桌宠，与 [deskpet-mini](../deskpet-mini/)�
 没有 Node 的环境照样能出 exe。
 
 前置只有两样：Rust（stable，MSVC 工具链，含 VS Build Tools 的 C++ 桌面组件）+ Python 3（`prepare_assets.py` 只用标准库）。
-另外素材前提：`deskpet-mini/frames_*` 已生成（帧序列不入库，见 [deskpet-mini/README.md](../deskpet-mini/README.md)）。
+另外素材前提：`deskpet-python/frames_*` 已生成（帧序列不入库，见 [deskpet-python/README.md](../deskpet-python/README.md)）。
 
 两条命令（在 `deskpet-tauri\` 下逐条执行）：
 
@@ -22,7 +22,7 @@ Tauri 2 + 零构建前端的透明桌宠，与 [deskpet-mini](../deskpet-mini/)�
 cd src-tauri
 cargo build --release --target-dir %TEMP%\deskpet-tauri-target
 
-:: 2) 准备运行期素材（把 deskpet-mini 的帧拷到 deskpet-tauri\assets，可随时重跑）
+:: 2) 准备运行期素材（把 deskpet-python 的帧拷到 deskpet-tauri\assets，可随时重跑）
 python build\prepare_assets.py --assets
 
 :: 3) 运行（run.bat 会自动把 DESKPET_ASSETS 指到 deskpet-tauri\assets）
@@ -144,9 +144,9 @@ deskpet-tauri\
 
 **局限**：轮询间隔 50ms，指针从透明区快速划到宠物身上时最坏有 50ms 的"这一段仍穿透"窗口（表现为第一下点击可能漏到下层窗口）；要消掉得改成 `WM_NCHITTEST` 或 `mouseenter` 级别的低延迟钩子，本轮没做。
 
-## 与 deskpet-mini 的差异
+## 与 deskpet-python 的差异
 
-| 维度 | deskpet-mini（PyQt6） | deskpet-tauri |
+| 维度 | deskpet-python（PyQt6） | deskpet-tauri |
 | --- | --- | --- |
 | 素材 | `frames_*/` + `meta.json`，WebP q80 | **同一份**（运行期从 `assets\` 读，不编译进 exe） |
 | 帧清单 | `clips.json`（顺序/类型/名字）+ `meta.json`（帧数/fps/格式） | `assets/clips.json` + `assets/meta.json`（与 mini 同一份，`prepare_assets.py --assets` 原样复制） |
@@ -170,7 +170,7 @@ powershell -NoProfile -File build\bench-chart.ps1
 
 条件：同窗口尺寸（中档 15% = 192×177 逻辑像素，物理 288×266）、同素材、待机循环采样 60s、Windows 11 本机（逻辑 1280×800 / 物理 1920×1200，150%）。
 
-| 指标 | deskpet-tauri（素材外置后） | deskpet-mini | 说明 |
+| 指标 | deskpet-tauri（素材外置后） | deskpet-python | 说明 |
 | --- | --- | --- | --- |
 | 仅程序本体 | **3.2MB**（单 exe，素材已不在里面；上轮内嵌形态 22.8MB） | 19.6MB（`pet.py` + 4 段帧） | exe 缩到原来的 1/7 |
 | 运行期素材目录 | 72.9MB（15 段，`assets\`，可换不编译） | 72.9MB（同 15 段 `frames_*`） | 两边素材是同一份 |
