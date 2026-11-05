@@ -16,6 +16,8 @@ from PyQt6.QtCore import Qt, QTimer, QRect
 from PyQt6.QtGui import QImage, QPainter, QAction, QActionGroup, QRegion
 from PyQt6.QtWidgets import QApplication, QMenu, QWidget
 
+from state_map import StateMap
+
 T0 = time.monotonic()
 ROOT = os.path.dirname(os.path.abspath(__file__))
 
@@ -42,19 +44,24 @@ EXTS = {}          # 每段实际使用的帧后缀："webp" 或 "png"
 ACTIONS = []       # 动作 clip 的 id，按优先级排序
 IDLE_ID = "idle"
 LOG_PATH = None
+# 状态映射：pack 里的配置（tool 与 tauri 版读同一份语义，见 docs/material-packs.md）
+STATE_MAP_PATH = os.path.join(os.path.dirname(ROOT), "packs", "dsh", "state-map.json")
 
 
 def load_clips():
-    """clips.json 管顺序/类型/名字；meta.json 管目录、帧数、fps、格式。缺 clips.json 时退回旧行为。"""
+    """clips.json 管顺序/类型/中文名/defaultIdle；meta.json 管目录、帧数、fps、格式。"""
     global IDLE_ID
     meta_clips = META.get("clips", {})
     path = os.path.join(ROOT, "clips.json")
+    default_idle = None
     if os.path.exists(path):
         with open(path, encoding="utf-8") as f:
-            arr = json.load(f).get("clips", [])
+            raw = json.load(f)
+        arr = raw.get("clips", [])
+        default_idle = raw.get("defaultIdle")
     else:
         arr = [{"id": k, "type": "idle" if k == "idle" else "action",
-                "loop": k == "idle", "name": k} for k in meta_clips]
+                "loop": k == "idle", "displayName": k} for k in meta_clips]
     out = {}
     for e in arr:
         cid = e.get("id")
@@ -63,12 +70,16 @@ def load_clips():
         m = meta_clips.get(cid, {})
         out[cid] = {"dir": m.get("dir", e.get("dir", "frames_" + cid)),
                     "fps": m.get("fps", 24), "count": m.get("count", 1),
-                    "format": m.get("format"), "name": e.get("name", cid),
+                    "format": m.get("format"),
+                    "displayName": e.get("displayName") or e.get("name") or cid,
                     "type": e.get("type", "action"), "loop": bool(e.get("loop", False)),
                     "priority": e.get("priority", 99)}
-    idd = [c for c in out if out[c]["type"] == "idle"]
-    IDLE_ID = idd[0] if idd else next(iter(out))
-    return out, sorted([c for c in out if out[c]["type"] != "idle"],
+    if default_idle and default_idle in out:
+        IDLE_ID = default_idle
+    else:
+        idd = [c for c in out if out[c]["type"] == "idle"]
+        IDLE_ID = idd[0] if idd else next(iter(out))
+    return out, sorted([c for c in out if c != IDLE_ID],
                        key=lambda c: out[c]["priority"])
 
 
@@ -191,6 +202,11 @@ class Pet(QWidget):
         self.prev_img = None
         self.fade_start = None
         self.drag_pos = None
+        self.press = None             # (global 坐标, 时刻) 用于区分单击/拖动
+        self._dbl_t = 0.0             # 上次双击的时刻，用于吞掉双击的第二次松开
+        self.on_clip_end = None       # 当前段播完的回调（状态映射用）
+        self.cur_loop = True
+        self.sm = None                # 状态映射（StateMap），main() 里创建
         self.fps = CLIPS[IDLE_ID]["fps"]
 
         # ---- 点击穿透：降采样 alpha 掩码 ----
@@ -300,8 +316,12 @@ class Pet(QWidget):
 
     def tick(self):
         n = CLIPS[self.clip]["count"]
-        if not CLIPS[self.clip]["loop"] and self.idx >= n - 1:
-            self._switch(IDLE_ID)
+        if self.idx >= n - 1 and not self.cur_loop:
+            cb, self.on_clip_end = self.on_clip_end, None
+            if cb:
+                cb()
+            else:
+                self._switch(IDLE_ID)
         else:
             self.idx = (self.idx + 1) % n
             self.current_img = self.loader.get(self.clip, self.idx) or self.current_img
@@ -310,7 +330,8 @@ class Pet(QWidget):
         self._apply_mask()
         self.update()
 
-    def _switch(self, clip):
+    def _switch(self, clip, loop=None, on_end=None):
+        """切到某一段。loop=None 表示用 clips.json 里的 loop；状态映射可以覆盖。"""
         self.prev_img = self.current_img
         self.fade_start = time.monotonic()
         if clip == IDLE_ID:
@@ -319,10 +340,26 @@ class Pet(QWidget):
             self.idle_resume = (self.idx + 1) % CLIPS[IDLE_ID]["count"]
             self.idx = 0
         self.clip = clip
+        self.cur_loop = CLIPS[clip]["loop"] if loop is None else bool(loop)
+        self.on_clip_end = on_end
+        if self.sm is not None:
+            self.sm.playing = clip
         self.loader.reset(self._size())
         self.current_img = self._load_now(clip, self.idx)
         self._prefetch()
         self._apply_mask(force=True)
+
+    # ---- 状态映射对接 ----
+    def state_play(self, clip_id, loop, on_end):
+        """StateMap 的播放回调（在线程外、主线程里调用）。"""
+        if clip_id not in CLIPS:
+            log("state_play 缺少 clip: %s" % clip_id)
+            return
+        self._switch(clip_id, loop=loop, on_end=on_end)
+        log("state_play clip=%s loop=%s" % (clip_id, loop))
+
+    def state_play_idle(self):
+        self._switch(IDLE_ID, loop=True)
 
     def play_action(self, cid):
         """播指定动作；播完 tick() 会自动回待机。"""
@@ -356,6 +393,7 @@ class Pet(QWidget):
     def mousePressEvent(self, e):
         if e.button() == Qt.MouseButton.LeftButton:
             self.drag_pos = e.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            self.press = (e.globalPosition().toPoint(), time.monotonic())
             e.accept()
 
     def mouseMoveEvent(self, e):
@@ -364,17 +402,49 @@ class Pet(QWidget):
             e.accept()
 
     def mouseReleaseEvent(self, e):
+        press, self.press = self.press, None
         self.drag_pos = None
+        if press and self.sm is not None:
+            p, t0 = press
+            moved = (e.globalPosition().toPoint() - p).manhattanLength()
+            # 双击的第二次 release 也会走到这里：400ms 内的松开不算单击，
+            # 否则会把双击的炸毛顶成"得意"（并且状态被改写成 click）
+            if time.monotonic() - self._dbl_t < 0.4:
+                e.accept()
+                return
+            if moved < 4 and time.monotonic() - t0 < 0.4:
+                self.sm.clear_reminder("单击")
+                self.sm.set_state("click", "单击")
         e.accept()
 
     def mouseDoubleClickEvent(self, e):
-        if e.button() == Qt.MouseButton.LeftButton and self.clip == IDLE_ID:
-            self.play_next_action()
+        if e.button() == Qt.MouseButton.LeftButton and self.sm is not None:
+            self._dbl_t = time.monotonic()
+            self.sm.clear_reminder("双击")
+            if "double_click" in self.sm.rules:
+                self.sm.set_state("double_click", "双击")
+            elif self.clip == IDLE_ID:
+                self.play_next_action()
         e.accept()
+
+    def open_workshop(self):
+        """素材工坊是独立工具，不是运行时依赖：找不到就明确告知，不静默失败。"""
+        import subprocess
+        from PyQt6.QtWidgets import QMessageBox
+        bat = os.path.join(ROOT, "workshop.bat")
+        if not os.path.exists(bat):
+            QMessageBox.warning(self, "素材工坊", "找不到 %s" % bat)
+            return
+        try:
+            subprocess.Popen(["cmd", "/c", bat], cwd=ROOT)
+            log("workshop_launch ok")
+        except OSError as exc:
+            QMessageBox.warning(self, "素材工坊", "启动失败：%s" % exc)
 
     def _build_menu(self):
         menu = QMenu(self)
         group = QActionGroup(self)
+        # 交互类与状态映射共用一份 priority，这里按同一顺序排，避免菜单和状态表的顺序对不上
         for name in ("小", "中", "大"):
             act = QAction(f"尺寸：{name}", self)
             act.setCheckable(True)
@@ -385,16 +455,21 @@ class Pet(QWidget):
         if ACTIONS:
             menu.addSeparator()
             for cid in ACTIONS:
-                act = QAction("动作：" + CLIPS[cid]["name"], self)
+                act = QAction("动作：" + CLIPS[cid]["displayName"], self)
                 act.triggered.connect(lambda _, c=cid: self.play_action(c))
                 menu.addAction(act)
         menu.addSeparator()
+        workshop_act = QAction("素材工坊…", self)
+        workshop_act.triggered.connect(self.open_workshop)
+        menu.addAction(workshop_act)
         quit_act = QAction("退出", self)
         quit_act.triggered.connect(QApplication.quit)
         menu.addAction(quit_act)
         return menu
 
     def contextMenuEvent(self, e):
+        if self.sm is not None:
+            self.sm.clear_reminder("右键")
         self._build_menu().exec(e.globalPos())
 
     def set_tier(self, name):
@@ -414,6 +489,8 @@ def main():
     ap.add_argument("--width", type=int, default=0, help="宠物宽度(像素)，默认中档=屏幕宽 15%%")
     ap.add_argument("--log", default="", help="把启动/动作时间点写到这个文件，用于测时")
     ap.add_argument("--clip", default="", help="启动时直接播某个动作（调试用）")
+    ap.add_argument("--state", default="", help="启动时强制进入某个状态（调试用：click/done/…）")
+    ap.add_argument("--state-map", default=STATE_MAP_PATH, help="状态映射配置路径（默认 packs/dsh/state-map.json）")
     ap.add_argument("--freeze", action="store_true",
                     help="调试用：停在第一帧不播，供命中测试取稳定样本")
     args = ap.parse_args()
@@ -433,8 +510,28 @@ def main():
     pet = Pet(width)
     pet.tier_name = tier
     pet.move(screen.right() - pet.width() - 24, screen.bottom() - pet.height() - 12)
+
+    # ---- 状态映射：同一份 packs/<packId>/state-map.json，热加载 ----
+    light = {cid: {"fps": c["fps"], "count": c["count"], "name": c["displayName"]}
+             for cid, c in CLIPS.items()}
+    pet.sm = StateMap(args.state_map, light, pet.state_play, pet.state_play_idle, log)
+    pet.sm.playing = IDLE_ID
+    pet.sm.set_state("idle", "启动")
+
+    def state_tick():
+        pet.sm.load()          # mtime 没变就什么都不做（800ms 级去抖按内容比对）
+        pet.sm.tick()
+
+    state_timer = QTimer(pet)
+    state_timer.timeout.connect(state_tick)
+    state_timer.start(1000)
+
     pet.show()
     pet.repaint()          # 同步画完第一帧，再记时间
+    if args.state:
+        pet.sm.set_state(args.state, "cli")
+    if args.clip:
+        pet.play_action(args.clip)
     if args.freeze:
         pet.timer.stop()
     log("first_paint_ms=%.0f width=%d pid=%d"

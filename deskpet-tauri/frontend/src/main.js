@@ -491,16 +491,22 @@ window.addEventListener("pointermove", (e) => {
   down = null;
   startNativeDrag().finally(() => { dragging = false; });
 });
+let clickTimer = 0;
 window.addEventListener("pointerup", () => {
   const d = down;
   down = null;
-  // 单击（不是拖动的松开）算一个可观测状态，交给状态映射决定播什么
+  // 单击（不是拖动的松开）算一个可观测状态，交给状态映射决定播什么。
+  // 延迟 250ms 再判定：如果紧跟一个 dblclick，就把这次单击取消（否则炸毛会被顶成"得意"）
   if (d && !dragging && performance.now() - d.t < 400) {
-    clearReminder("单击");
-    setState("click", "单击");
+    clearTimeout(clickTimer);
+    clickTimer = setTimeout(() => {
+      clearReminder("单击");
+      setState("click", "单击");
+    }, 250);
   }
 });
 window.addEventListener("dblclick", () => {
+  clearTimeout(clickTimer);
   logEvent("dblclick");
   clearReminder("双击");
   // 有 double_click 规则就走状态映射（默认给炸毛）；没有就退回旧的"依次轮播动作"
@@ -537,6 +543,7 @@ let awaitingAt = 0;          // 进入 done 的时刻（用于 awaiting_user）
 let cur = null;              // 当前占用：{clipId, priority, holdUntil, interruptible}
 let silenced = false;        // 当前状态已经"不再播"（once 播完 / 次数用尽 / 超时）
 let reminders = 0;           // 提醒态已重复次数
+let reminderPending = false; // 提醒态正在等下一次提醒（此间不做画面补齐，免得每 tick 重播）
 let deadlineAt = 0;          // 提醒态超时时刻（0=没有）
 const lastPlay = new Map();  // clipId -> 上次开始播放的时刻
 
@@ -665,8 +672,10 @@ function onStateClipEnd(rule, source) {
   if (rp.mode === "interval" && reminders + 1 < rp.maxTimes
       && (deadlineAt === 0 || performance.now() < deadlineAt)) {
     reminders += 1;
+    reminderPending = true;
     startIdle();                       // 间隔期先回到低干扰的待机画面
     setTimeout(() => {
+      reminderPending = false;
       if (curState === source && !silenced) requestPlay(rule, source + ":reminder");
     }, rp.intervalSec * 1000);
     stateDbg(`提醒 ${source} 第 ${reminders + 1}/${rp.maxTimes} 次，${rp.intervalSec}s 后`);
@@ -674,6 +683,7 @@ function onStateClipEnd(rule, source) {
   }
   // once 或次数用尽：不再播，静默待机（状态本身还没退出，等外部事件）
   silenced = true;
+  reminderPending = false;
   stateDbg(`${source} 提醒结束（${rp.mode}），转为静默待机`);
   startIdle();
 }
@@ -685,6 +695,7 @@ function setState(name, why = "") {
   curState = name;
   silenced = false;
   reminders = 0;
+  reminderPending = false;
   deadlineAt = 0;
   const now = performance.now();
   if (name === "idle") longIdleAt = now;
@@ -761,7 +772,8 @@ function stateTick() {
     return;
   }
   // 画面补齐：目标状态的 clip 没在播、且当前没有占用 → 重试（比如被冷却/占用拒过一次）
-  if (!silenced && curState) {
+  // 提醒态正在等下一次提醒时不补齐，否则会每秒重播一遍完整动作
+  if (!silenced && !reminderPending && curState) {
     const rule = rules.get(curState);
     if (rule && !(state && state.id === rule.clipId) && !(cur && now < cur.holdUntil)) {
       requestPlay(rule, curState + ":reconcile");

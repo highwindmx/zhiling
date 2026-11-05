@@ -71,16 +71,43 @@ run.bat
 
 没有任务栏图标，`run.bat` 用 `pythonw` 启动，不弹控制台窗口。
 
+## 状态映射（哪个状态播哪个动作）
+
+所有"什么时候自动播什么"都由 `..\packs\dsh\state-map.json` 决定，**改完保存就生效**（1s 轮询 + 内容比对 + 800ms 去抖；
+解析失败保留上一版并提示，坏的某一条只废自己）。tauri 版读的是同一份文件的副本（`assets\state-map.json`），字段语义完全一致。
+
+| 状态 | 进入条件 | 默认动作 | priority |
+|---|---|---|---|
+| `idle` | 默认 | 待机 `dsh_idle`（循环） | 0 |
+| `long_idle` | 10 分钟无交互 | 打哈欠 `dsh_yawn`（只播一次） | 10 |
+| `awaiting_user` | `done` 后 30s 用户没再输入 | 看手机 `dsh_phone`（只播一次，不常驻） | 25 |
+| `streaming` | 流式输出中 | 工作中 `dsh_work`（循环） | 30 |
+| `busy` | 模型在忙、还没有首 token | 思考状 `dsh_think`（循环） | 35 |
+| `done` | 本轮完成 | 真开心 `dsh_happy` | 45 |
+| `needs_decision` | 需要你确认/选择 | 无奈状 `dsh_helpless`（一次 + 每 75s 轻提醒 ×3） | 55 |
+| `error` | 出错 / 流式超时 | 不高兴 `dsh_unhappy` | 60 |
+| `click` | 单击 | 得意状 `dsh_proud` | 70 |
+| `double_click` | 双击 | 炸毛 `dsh_shock` | 85 |
+
+- **priority 越大越能打断**：只有严格大于当前动作的 priority 才能插队；`interruptible=false` 的动作必须播完。
+- 两个提醒态支持 `repeat: {mode:"once"|"interval", intervalSec, maxTimes}`；**其它状态写了 interval 会按 once 忽略**。
+- `needs_decision` 现在**没有可靠事件源**（DSH 只广播 `welcome/status/token/done/error`），需要 DSH 补 `attention` 事件；
+  当前只是占位实现（默认 `enabled:true` 但在没有外部事件时不会被触发，命令行可用 `--state` 手工验证）。
+- 调试：日志里每条形如 `状态 -> 命中 clipId/prio -> 播放 | 被拒(cooldown/busy/disabled)`，最近 20 条；`--log <文件>` 可落盘。
+- 手工触发某个状态（排查用）：`.venv\Scripts\python.exe pet.py --state needs_decision`。
+
+
 ## 目录结构
 
 ```
 zhiling/
 ├─ deskpet-mini/            主程序
 │  ├─ pet.py                运行时代码（窗口、播放、拖动、菜单）
+│  ├─ state_map.py          状态映射（10 状态、三道闸、提醒态、20 条调试日志）
 │  ├─ run.bat               双击启动宠物
 │  ├─ workshop.bat          双击启动素材工坊
-│  ├─ clips.json            clipId / 名称 / 类型（idle|action）/ 是否循环 / 播放优先级
-│  ├─ requirements.txt      运行时依赖
+│  ├─ clips.json            clipId / displayName / 类型 / 是否循环 / 播放优先级 + 顶层 defaultIdle
+│  ├─ requirements.txt      运行时依赖（legacy，见下方"环境"一节）
 │  ├─ meta.json             画布尺寸、每段 fps/帧数/缩放/脚底锚点
 │  ├─ assets/               两段源视频（原文件名保留）
 │  ├─ presets/              素材工坊参数预设（*.json，可随仓库共享）
@@ -95,10 +122,12 @@ zhiling/
 │  │  ├─ test_workshop.py   工坊自测（预览 fps、预设、登记 clips.json）
 │  │  └─ regress_keyer.py   抠像回归（同参数重跑，与已提交帧逐像素对比）
 │  ├─ docs/screenshots/     效果截图（README 用）
+│  ├─ frames_dsh_*          ← 生成产物，不入库（11 段，共 53.3MB）
 │  ├─ frames_idle/          ← 生成产物，不入库（96 帧 / 4.4MB）
 │  ├─ frames_action/        ← 生成产物，不入库（121 帧 / 4.9MB）
 │  ├─ frames_action2/       ← 打字（107 帧 / 5.3MB）
 │  └─ frames_action3/       ← 抱臂（107 帧 / 4.9MB）
+├─ packs/dsh/               素材包：state-map.json（状态映射；将来 manifest.json 见 docs/material-packs.md）
 └─ deskpet-demo/            早期网页原型（浏览器里跑的 canvas 版）
 ```
 

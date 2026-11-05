@@ -1,13 +1,16 @@
-# 动作 × 对话：状态机、映射与用户配置设计
+# 动作 × 对话：状态机与状态映射设计
 
-> 范围：**只做设计**，不改 `pet.py` / `deskpet-tauri` / `clips.json`。所有"看到 X → 播 Y → 持续 Z → 否则回落 W"都按当前**已登记**的 4 段素材写，未登记的素材在降级表里单独标注。
+> 本轮已落地：`packs/dsh/state-map.json` + mini 的 `state_map.py` + tauri 的 `main.js` 状态层。
+> **用户配置 = 状态映射，不再有关键词/正则**（关键词方案降级为附录 §9.7「已弃用/备选」）。
+> 素材现在是 11 段 `dsh_*`（`clips.json` 已全部登记，`defaultIdle=dsh_idle`）。
 
 ## 0. 结论（先看这段）
 
 1. **DSH 侧能接**：`dsh-deskpet-bridge` 是一个跑在 `127.0.0.1:55471` 的零依赖 WebSocket 服务，已经能对外广播 `welcome / status / token / done / error`，也能接收 `send / ping`。它**没有**思考中/工具调用/首 token/TTS/中断 这些事件——因为这些帧在 `index.js:306` 就被 `chunk.type === 'text-delta'` 过滤掉了。
 2. **驱动方式必须是"阶段变化驱动"**：`token` 每来一个字就切动作一定抽搐，所以只在 `status:running`、`done`、`error`、`超时` 四个边上做转移，`token` 只用来计时（判断"等待首 token"是否超时）。
-3. **素材时长决定一切**：最短的动作 4.00s（待机循环），最长 5.04s（真开心/挥手），而"等待首 token"经常只有 0.3~0.8s。所以必须引入 `minPlayMs` + "允许被打断" + "只播一次不循环" 三条规则，否则一个 5s 的动作会把后续状态全部压住。
-4. **用户配置做 L1（关键词/正则），不做 L2（小模型）**，L3（AI 直接调 `play_clip`）作为可选增强。理由见 §9.3。
+3. **素材时长决定一切**：最短的循环 4.00s，最长 5.2s，而"等待首 token"经常只有 0.3~0.8s。所以必须引入 `minPlayMs` + "允许被打断" + "只播一次不循环" 三条规则，否则一个 5s 的动作会把后续状态全部压住。
+4. **用户配置做状态映射（不做关键词）**：把 10 个可观测状态暴露出来，用户给每个状态选一个动画；匹配逻辑由程序负责，用户不需要写规则。理由见 §9.1。
+5. **两个提醒态需要区分可观测性**：`awaiting_user` 纯客户端可派生（本轮已实现）；`needs_decision` 现有 DSH 事件源**无法**观测，需要 DSH 补 `attention` 事件（本轮先用启发式占位，标注不可靠）。
 
 ---
 
@@ -125,13 +128,13 @@ ASCII 版本（给不看 Mermaid 的人）：
 
 | 状态 | 进入条件 | 最长停留 | 到点后做什么 | 降级动作 |
 |---|---|---|---|---|
-| `Idle` | 启动 / 任何动作结束 | ∞（正常） | — | 循环 `idle`（默认就在放） |
+| `Idle` | 启动 / 任何动作结束 | ∞（正常） | — | `dsh_idle`（默认待机，由 `defaultIdle` 指定） |
 | `UserInput` | 收到 `user_input` 或本地 `send` | **1.5s** | 仍没等到 `status:running` → 退回 `Idle` | 不播动作（避免"点了没反应又乱演"） |
-| `WaitFirstToken` | `status:running` | **1.2s**（可调 0.6~2.0） | 视为"模型在忙"，播一次长动作 | 首选 `dsh_work`（未登记则 `action2` 打字），播 4.46s 后若仍无 token 则**重播间隔 ≥30s** |
-| `Streaming` | 第 1 个 token | **20s 无新 token** | 判为超时 | 播 `dsh_unhappy`（情绪：无奈），状态转 `Error` |
-| `Done` | `done` | 动作时长 + 2s | 回 `Idle` | 首选 `dsh_happy`（未登记则 `action` 挥手） |
-| `Error` | `error` 事件 / 超时 | 动作时长 + 2s | 回 `Idle` | 首选 `dsh_unhappy`（未登记则 `action3` 抱臂）；**不用"炸毛"**（素材不可用，见 README 体检表） |
-| `LongIdle` | `Idle` 持续 10min | ∞ | 只在进入时播一次 | 首选"打哈欠"（未登记）→ 否则播 `action3` 抱臂一次，之后 30min 内不再播 |
+| `WaitFirstToken` | `status:running` | **1.2s**（可调 0.6~2.0） | 视为"模型在忙"，播一次长动作 | `dsh_think`（思考状）循环，直到首 token 或 `done/error` |
+| `Streaming` | 第 1 个 token | **20s 无新 token** | 判为超时 | `dsh_work`（工作中）循环；超时转 `error` → `dsh_unhappy` |
+| `Done` | `done` | 动作时长 + 2s | 回 `Idle`（30s 无输入则进 `awaiting_user`） | `dsh_happy`（真开心） |
+| `Error` | `error` 事件 / 超时 | 动作时长 + 2s | 回 `Idle` | `dsh_unhappy`（不高兴）；**不用"炸毛"**——炸毛留给双击的"吃惊" |
+| `LongIdle` | `Idle` 持续 10min | ∞ | 只在进入时播一次 | `dsh_yawn`（打哈欠）一次，之后 10min 内不再播 |
 
 > 所有"最长停留"都是**设计值**，实现时放 `rules/timing.json`，别写死在代码里。
 
@@ -192,15 +195,23 @@ ASCII 版本（给不看 Mermaid 的人）：
 ### 5.1 优先级总序
 
 ```text
-L3 显式指令(play_clip / 用户右键选动作)  >
-对话阶段事件(done / error / tool_call)   >
-用户手动交互(双击轮播)                    >
-L1 用户规则(关键词命中)                   >
-随机/低优先(久坐打哈欠)                   >
-默认待机循环
+用户手动操作(右键选动作 / 拖拽 / Esc)         95   ← 人的直接意志
+双击                                         85
+单击                                         70
+error                                        60
+needs_decision（待你决策，提醒态）             55
+done                                         45
+busy / streaming                             35 / 30
+awaiting_user（等你回应，提醒态）              25
+long_idle                                    10
+idle                                          0
 ```
 
-用户"刚戳了一下，此时 AI 开始流式输出" → **用户操作优先并享受 1.5s 保护期**：双击产生的动作（priority 90）在 `minPlayMs=1500` 内不会被 `status:running`（30）打断；1.5s 后允许被 `done`（50）以外的低优先级排队，实际表现是"用户戳完，动作播完，再进入工作中"。**不要**在用户点击后的 300ms 内响应任何对话事件（防手抖双触发）。
+数值就是 `state-map.json` 里的 `priority`（0~100）。两条硬规则：
+- 高优先级可以抢占低优先级的动作（`interruptible=true` 时）；低优先级想插高优先级一律 `busy` 被拒。
+- 用户手动操作永远最高，且享受保护期；提醒态**不打断**用户动作，只在动作结束后才提醒。
+
+用户"刚戳了一下，此时 AI 开始流式输出" → **用户操作优先并享受保护期**：双击产生的动作（priority 85）在 `minPlayMs=1500` 内不会被 `status:running`（30）或 `done`（45）打断；实际表现是"用户戳完，动作播完，再进入工作中"。**不要**在用户点击后的 300ms 内响应任何对话事件（防手抖双触发）。
 
 ### 5.2 仲裁器伪代码（10 行，两版照抄）
 
@@ -304,9 +315,113 @@ def request_play(clip_id, priority, min_play_ms=0, cooldown_s=0, interruptible=T
 
 ---
 
-## 9. 用户配置
+## 9. 用户配置：状态映射（替代关键词规则）
 
-### 9.1 规则 schema（可直接落地）
+### 9.1 为什么不做关键词
+
+上一轮设计的是"关键词/正则 → 播动作"，本轮推翻，原因：
+
+- 关键词要用户**写规则**（短语表、否定词、反讽、子串误伤、限流），规则一多就"抽风"，没配的地方就完全不响应；
+- 关键词**不可解释**：用户看到动作不知道"它为什么动"，只能翻日志；
+- 而真正稳定的信号其实只有 10 个**可观测状态**（模型忙 / 流式中 / 完成 / 出错 / 单击 / 双击 / 待机 / 长待机 / 等回应 / 待决策）。给状态配动画比给句子配动画可靠得多，且没有误触发。
+
+所以：**程序负责状态判定，用户负责"每个状态播哪段"**。关键词那套保留为附录（§9.7），标注「已弃用/备选」，不实现。
+
+### 9.2 文件与加载
+
+| 项 | 约定 |
+|---|---|
+| 路径 | `packs\<packId>\state-map.json`（内置默认随仓库走；`packId` 现在只有 `dsh`） |
+| 双版同源 | `prepare_assets.py --assets` 把它原样复制到 `deskpet-tauri\assets\state-map.json`，**两版读同一份**，字段语义不分叉 |
+| 热加载 | 每次 tick（1s）比对 `mtime` + 文件内容；变了才重解析，**去抖 800ms**；解析失败 → 保留上一版 + 提示（mini 用 `QMessageBox`/日志，tauri 用红框 `showHint`） |
+| 逐条校验 | 每条规则独立 `try/catch`：`state` 未知 / `clipId` 不在 `clips.json` / `priority` 不在 0~100 / `repeat` 非法 → **只废这一条**并记一笔日志，不废整个文件 |
+| 缺文件 | 用内置默认映射（等价于仓库里这份），不报错 |
+
+### 9.3 规则字段
+
+```json
+{"state":"needs_decision","clipId":"dsh_helpless","priority":55,"minPlayMs":1200,
+ "cooldownSec":0,"loop":false,"interruptible":true,"enabled":true,
+ "repeat":{"mode":"interval","intervalSec":75,"maxTimes":3}}
+```
+
+| 字段 | 说明 |
+|---|---|
+| `state` | 10 个状态之一（见 §9.4），写错就整条废 |
+| `clipId` | 必须是 `clips.json` 里登记过的 id（`dsh_*`） |
+| `priority` | 0~100，见 §5.1；同状态多条时取最高 |
+| `minPlayMs` | 最短占用时长，防"刚起播就被下一状态打断" |
+| `cooldownSec` | 同一 clip 的冷却；`0` = 不冷却 |
+| `loop` | 是否循环播放（长时间状态用 `true`，一次性动作用 `false`） |
+| `interruptible` | `false` 时该动作必须播完（用于"必须被看见"的动作） |
+| `enabled` | 关掉某状态：该状态不播任何动作，画面保持当前 |
+| `repeat` | **只有两个提醒态会用**；其它状态写了 `interval` 直接忽略（按 `once` 处理） |
+
+### 9.4 10 个状态与默认映射（推荐值）
+
+| 状态 | 含义 | 可观测性 | 默认 clip | prio | loop / repeat | minPlay / cooldown |
+|---|---|---|---|---|---|---|
+| `idle` | 待机 | 默认 | `dsh_idle` | 0 | loop | 0 / 0 |
+| `long_idle` | 长待机（10min 无交互） | 客户端计时 | `dsh_yawn` | 10 | once | 0 / 600s |
+| `awaiting_user` | done 后 30s 用户没再输入 | **纯客户端派生** | `dsh_phone` | 25 | once | 0 / 0 |
+| `streaming` | 流式输出中 | `token` | `dsh_work` | 30 | loop | 0 / 5s |
+| `busy` | 模型在忙、尚无首 token | `status=running` | `dsh_think` | 35 | loop | 0 / 0 |
+| `done` | 本轮完成 | `done` | `dsh_happy` | 45 | once | 1200 / 0 |
+| `needs_decision` | 需要用户确认/选择 | **DSH 缺事件**（见 §9.5） | `dsh_helpless` | 55 | interval 75s × 3 | 1200 / 0 |
+| `error` | 出错 | `error` / 流式超时 | `dsh_unhappy` | 60 | once | 0 / 30s |
+| `click` | 单击 | 本地鼠标 | `dsh_proud`（得意） | 70 | once | 0 / 3s |
+| `double_click` | 双击 | 本地鼠标 | `dsh_shock`（炸毛） | 85 | once | 0 / 8s |
+
+**为什么 `streaming` 用 `工作中`（`dsh_work`）而不是 `看手机`**：流式可能持续几十秒到几分钟，`看手机` 传达的是"它在摸鱼"，和"模型正在输出"语义相反，用户会误判它没在干活。`工作中` 的敲键盘动作正好对应输出，且是 107 帧/4.46s 的循环，边界自然。**风险**：长循环看久了吵——缓解办法是每 3 个循环插 1 个待机循环（本轮未实现，写进限制）。若用户喜欢更安静，把这一行改成 `dsh_phone` + `repeat` 即可，不需要改代码。
+
+**为什么 `busy` 用 `思考状`**：等待首 token 时它应该"看起来在想办法"，而不是"在敲键盘"（还没有输出）。
+
+**为什么 `awaiting_user` 只播一次**：它是"提醒你一句"，不是"持续骚扰"。播完回到低频待机，进入 `long_idle` 后不再重复。
+
+**为什么 `needs_decision` 用 `无奈状` 而不是 `炸毛/不高兴`**：`needs_decision` 是"等你拍板"，不是"出错了"。用炸毛/生气会让用户以为程序崩了或宠物在发脾气，反而去排查故障；`无奈状`（摊手耸肩）语义是"你决定吧"，幅度大、容易注意到，且不带负面情绪。`error` 才用 `dsh_unhappy`。
+
+### 9.5 两个提醒态的实现要点（与其它 8 个不同）
+
+**`awaiting_user`（等你回应）—— 本轮可实现，不需要 DSH 改代码**
+
+- 进入：`done` 事件后启动计时器，`awaitingUserSec`（默认 30s，可配）内没有新的 `user_input` → 进入。
+- 播放：`repeat.mode="once"` → 播一次（默认 `看手机`，4.6s），播完回待机；**不常驻循环**。
+- 退场：用户任何输入 → 立刻 `busy`（`onUserInput` 清提醒）；进入 `long_idle` → 不再提醒（一次性标记 `silenced`）。
+- 优先级 25：低于 `streaming/busy`（不能抢正在输出的画面），高于 `long_idle`。
+
+**`needs_decision`（待你决策）—— 需要 DSH 改代码**
+
+- 现状：DSH 只广播 `welcome/status/token/done/error`，**没有任何"等待用户确认/选择"的信号**，所以本轮用**启发式占位**：`done` 之后如果 AI 回复末尾是 `?/？`、或包含 `1. 2. 3.` / `[ ]` / `是否` / `要不要` 等选项特征 → 进入 `needs_decision`。**这个启发式不可靠**（反问句、教程里的列表都会误触发），默认 `enabled:false`，只在用户显式打开时生效。
+- 需要 DSH 补的事件（建议 schema，和现有事件同一条 WS 通道）：
+  ```json
+  {"v":1,"type":"attention","kind":"confirm|choice|approval",
+   "prompt":"是否继续写入 3 个文件？","options":["继续","取消"],"timeoutSec":300,"ts":1730800000000}
+  ```
+  用户响应后再发 `{"type":"attention_clear","ts":...}`，宠物据此清除提醒。
+- 播放：一次明显动作（`dsh_helpless`，`minPlayMs=1200`）→ 之后每 `intervalSec`（默认 75s，可配 60~90）**轻微提醒一次**（当前实现是重播同一个动作，后续可换成"汗滴/气泡"叠加层）；`maxTimes=3`。
+- 退场（必须写死，否则会卡在提醒态）：
+  1. 用户响应（`user_input` / `attention_clear`）→ 清除，回 `busy`；
+  2. 超时（DSH 的 `timeoutSec`，没给就用 **300s**）→ 清除，回 `idle`；
+  3. 用户手动操作（双击 / 右键）→ 立即清除；
+  4. 提醒次数上限 3 次——到顶后**停在最后一次的画面，不再重播**，但不退出状态（等上面 1~3 的任一条）。
+- 优先级 55：高于 `done/streaming/busy/idle`，低于 `click/double_click` 等手动操作。
+
+**与 `error` 的区分（必须守住）**：`error` = "出错了"，动作是负面情绪（不高兴），节奏是一次性；`needs_decision` = "等你说话"，动作是中性/摊手，节奏是"一次 + 低频轻提醒"。两者混用会让用户把"等待确认"误读成"程序故障"。
+
+**亲密度联动**：本轮实现里**没有亲密度/好感度能力**（`pet.py`/前端都没有该字段），所以标为**待做**。产品判断先写死在这里：用户响应 `needs_decision` → 计正向；提醒超时**不计负向**（不能因为用户没回应就掉好感）。
+
+### 9.6 调试与拒绝原因
+
+- 环形缓冲最近 **20 条**，每条形如：
+  `当前状态 -> 命中规则(clipId/priority) -> 播放 | 被拒(disabled / cooldown / busy:<clipId> / hold)<理由>`
+- mini：`--log` 文件 + `state_map.py` 的 `_dbg`；tauri：`window.__deskpetLog()`（浏览器控制台/DevTools 可看），日志同时带 `state` 字段。
+- 关键拒绝语义：`busy` = 有更高优先级动作在占用（含 `holdUntil` 保护期）；`cooldown` = 同一 clip 冷却未到；`disabled` = 该条 `enabled:false`。
+
+### 9.7 附录：关键词/正则方案（已弃用 / 备选）
+
+> 以下是上一轮的关键词设计，**本轮不实现**。保留原因是：万一以后要"用户说什么就播什么"，这份 schema 和踩坑表可以直接拿来用。它不能替代状态映射，只能作为 `state` 之外的额外触发源。
+
+### 9.7.1 规则 schema（历史）
 
 ```json
 {
@@ -400,7 +515,7 @@ def request_play(clip_id, priority, min_play_ms=0, cooldown_s=0, interruptible=T
 | `cooldownSec` | 同一 `clipId` 的冷却；`oncePerSession` 是它之上的一次性开关 |
 | `moodImpact` | `-3~3`，默认 `0`；只影响亲密度，不改变动作强度 |
 
-### 9.2 关键词匹配的天坑与对策
+### 9.7.2 关键词匹配的天坑与对策（历史）
 
 | 坑 | 例子 | 对策（可直接实现） |
 |---|---|---|
@@ -413,7 +528,7 @@ def request_play(clip_id, priority, min_play_ms=0, cooldown_s=0, interruptible=T
 
 **为什么"最长匹配优先"比"先配置的优先"更合理**：命中词越长，信息量/特异性越高（"看手机"比"手机"更接近真实意图）。而"先配置的优先"把优先级绑在**编辑顺序**上——用户追加一条新规则会意外压掉旧规则，行为不可预测，且没法解释。落地上仍以 `priority` 为主序，长匹配只做同 priority 内的次序。
 
-### 9.3 三层方案对比与推荐
+### 9.7.3 三层方案对比与推荐（历史结论：L1 已弃用）
 
 | 层 | 能力 | 成本 | 风险 | 结论 |
 |---|---|---|---|---|
@@ -429,7 +544,7 @@ L3 显式指令  >  对话阶段事件（done/error/tool_call）  >  用户规�
 
 注意用户**手动**交互（双击/右键/拖拽）不在这条链里，它是"人的直接意志"，永远凌驾于上面所有自动来源（§5.1）。
 
-### 9.4 用户在哪里配、怎么配
+### 9.7.4 用户在哪里配、怎么配（历史）
 
 | 项 | 方案 |
 |---|---|
@@ -440,7 +555,7 @@ L3 显式指令  >  对话阶段事件（done/error/tool_call）  >  用户规�
 | 冲突提示 | 同 `clipId` 且同 `priority` 的两条规则 → 警告"优先级相同，按声明顺序生效，建议合并"，但**不阻断**加载 |
 | 调试模式 | 环形缓冲最近 **20 条**：`{time, event, text片段, ruleId, 结果: played|reject(busy/cooldown/disabled/scope)}`；入口：右键菜单 →「调试：最近命中」，或 `DESKPET_RULE_TRACE=1` 时写 `logs/rules.jsonl`。**这是用户调规则唯一可行的手段** |
 
-### 9.5 安全与体验边界
+### 9.7.5 安全与体验边界
 
 - 动作**不是惩罚**：所有 clip 只做"表现"，禁止任何"因为说了某句话就被冷落/变凶"的语义。给每条规则 `moodImpact`（`-3~3`，默认 0），由 `mood` 决定待机选择，而不是直接播"凶"的动作。
 - 误触发成本 > 漏触发：默认关闭所有"语义强"的规则（吃米饭/炸毛示例都 `enabled:false`），只开 4~6 条最稳的。
@@ -451,15 +566,15 @@ L3 显式指令  >  对话阶段事件（done/error/tool_call）  >  用户规�
 
 ## 10. 需要用户拍板的三个决策
 
-1. **说话期间用什么**：推荐 A（保持待机循环），而不是循环"工作中"冒充说话。
-2. **等待首 token 播不播"思考状/工作中"**：推荐"**超过 1.2s 才播**"，而不是一进入 running 就播（0.3s 的场景会被 4.46s 动作压住）。
-3. **出错播"炸毛"还是"不高兴"**：推荐"不高兴"（炸毛素材是黑底、绿幕抠像不可用；且"炸毛"作为错误反馈太强）。
+1. **`streaming` 播什么**：本轮默认 `工作中`（语义一致，但长循环略吵）；备选 `看手机`（安静，但容易误读成摸鱼）。改法：`state-map.json` 里改那一行的 `clipId`。
+2. **`needs_decision` 要不要开启发式**：默认 `enabled:false`（等 DSH 补 `attention` 事件）。要现在就能看到提醒效果，把它改成 `true`，但会误触发。
+3. **`error` 播「不高兴」还是「炸毛」**：默认不高兴（炸毛留给双击的"吃惊"）；如果用户希望出错更显眼，把 `error` 换成 `dsh_shock`。
 
-## 11. 实施顺序（下一轮）
+## 11. 实施顺序（本轮已完成的部分打勾）
 
-1. 先把 `dsh_idle / dsh_work / dsh_happy / dsh_unhappy` 登记进 `clips.json`（需两版上屏实测）。
-2. 两版各加一个 `bridge.py` / `bridge.rs`：WS 客户端 + §6 schema + `notify()`。
-3. 仲裁器（§5.2 十行）+ `rules/timing.json`。
-4. 调试环形缓冲 + 右键入口（没有这个，用户配规则就是盲配）。
-5. 规则文件 + 热加载 + 校验文案。
-6. 最后才考虑 `phase`/`tts` 事件（需要 DSH 侧配合）。
+1. ✅ 11 段登记进 `clips.json`（`defaultIdle=dsh_idle`）。
+2. ✅ 状态映射层：`state-map.json` + mini `state_map.py` + tauri `main.js`（10 状态、三道闸、提醒态、20 条调试日志）。
+3. ⬜ DSH 侧 `attention` 事件 + `attention_clear`（本轮缺，`needs_decision` 只能用启发式占位）。
+4. ⬜ 亲密度/好感度（本轮代码里没有该能力）。
+5. ⬜ 提醒提醒的"轻量叠加"（汗滴/气泡）——现在是重播动作。
+6. ⬜ 长循环降噪（`streaming` 每 3 个循环插一次待机）。

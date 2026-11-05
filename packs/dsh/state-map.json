@@ -1,0 +1,117 @@
+{
+  "version": 1,
+  "packId": "dsh",
+  "longIdleSec": 600,
+  "awaitingUserSec": 30,
+  "_comment": [
+    "状态 → 动画的映射表。改完保存即生效（热加载：mini 与 tauri 都在 1s 轮询，内容变了才重载；坏的整份文件保留上一版，坏的某条只废该条）。",
+    "priority 0~100：越大越能打断当前动作。只有 priority 严格大于当前占用者才能插队。",
+    "repeat 只对提醒态（awaiting_user / needs_decision）有效：once=只播一次后静默待机；interval=隔 intervalSec 再播，最多 maxTimes 次。",
+    "其它状态误写 repeat 会被按 once 忽略，不会常驻循环。"
+  ],
+  "rules": [
+    {
+      "state": "idle",
+      "clipId": "dsh_idle",
+      "priority": 0,
+      "minPlayMs": 0,
+      "cooldownSec": 0,
+      "loop": true,
+      "interruptible": true,
+      "enabled": true
+    },
+    {
+      "state": "long_idle",
+      "clipId": "dsh_yawn",
+      "priority": 10,
+      "minPlayMs": 1200,
+      "cooldownSec": 600,
+      "loop": false,
+      "interruptible": true,
+      "enabled": true,
+      "repeat": { "mode": "once", "intervalSec": 75, "maxTimes": 1 }
+    },
+    {
+      "state": "awaiting_user",
+      "clipId": "dsh_phone",
+      "priority": 25,
+      "minPlayMs": 0,
+      "cooldownSec": 0,
+      "loop": false,
+      "interruptible": true,
+      "enabled": true,
+      "repeat": { "mode": "once", "intervalSec": 90, "maxTimes": 1 }
+    },
+    {
+      "state": "busy",
+      "clipId": "dsh_think",
+      "priority": 35,
+      "minPlayMs": 0,
+      "cooldownSec": 0,
+      "loop": true,
+      "interruptible": true,
+      "enabled": true
+    },
+    {
+      "state": "streaming",
+      "clipId": "dsh_work",
+      "priority": 30,
+      "minPlayMs": 0,
+      "cooldownSec": 5,
+      "loop": true,
+      "interruptible": true,
+      "enabled": true
+    },
+    {
+      "state": "done",
+      "clipId": "dsh_happy",
+      "priority": 45,
+      "minPlayMs": 0,
+      "cooldownSec": 0,
+      "loop": false,
+      "interruptible": true,
+      "enabled": true
+    },
+    {
+      "state": "needs_decision",
+      "clipId": "dsh_helpless",
+      "priority": 55,
+      "minPlayMs": 1500,
+      "cooldownSec": 0,
+      "loop": false,
+      "interruptible": true,
+      "enabled": true,
+      "repeat": { "mode": "interval", "intervalSec": 75, "maxTimes": 3 }
+    },
+    {
+      "state": "error",
+      "clipId": "dsh_unhappy",
+      "priority": 60,
+      "minPlayMs": 0,
+      "cooldownSec": 30,
+      "loop": false,
+      "interruptible": true,
+      "enabled": true
+    },
+    {
+      "state": "click",
+      "clipId": "dsh_proud",
+      "priority": 70,
+      "minPlayMs": 0,
+      "cooldownSec": 3,
+      "loop": false,
+      "interruptible": true,
+      "enabled": true
+    },
+    {
+      "state": "double_click",
+      "clipId": "dsh_shock",
+      "priority": 85,
+      "minPlayMs": 0,
+      "cooldownSec": 8,
+      "loop": false,
+      "interruptible": true,
+      "enabled": true
+    }
+  ]
+}
