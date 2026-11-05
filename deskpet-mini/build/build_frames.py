@@ -1,5 +1,5 @@
 """生成两段素材的透明帧序列：待机(idle) + 动作(action)，构建期就缩到最终显示尺寸上限。"""
-import glob, json, os, subprocess, sys
+import glob, json, os, re, subprocess, sys
 import numpy as np
 from PIL import Image
 from scipy import ndimage
@@ -100,10 +100,22 @@ def extract_frames(src, dst, fps):
     return sorted(glob.glob(os.path.join(dst, "*.png")))
 
 
+def probe_src_fps(src):
+    """用 ffmpeg -i 的 stderr 读源帧率（只为日志里如实写「30fps→24fps」）。"""
+    try:
+        r = subprocess.run([ff, "-hide_banner", "-i", src], capture_output=True, text=True,
+                           errors="ignore")
+        m = re.search(r"(\d+(?:\.\d+)?)\s+fps", r.stderr)
+        return float(m.group(1)) if m else None
+    except Exception:
+        return None
+
+
 def build_clip(spec, log=print):
     """按 spec 生成一个新 clip：抽帧 → 抠像 → 自动缩放贴合画布 → 存盘 → 写 meta。
 
-    spec 字段：id, video, params(dict), fps?, width?, fmt?, quality?
+    spec 字段：id, video, params(dict), fps?, width?, fmt?, quality?, crop?,
+              out_dir?（给了就写到这里，不写 deskpet-mini/meta.json，供 pack 用）
     画布比例固定 826:760（与 frames_idle/frames_action 一致）。
     """
     cid = spec["id"]
@@ -118,6 +130,11 @@ def build_clip(spec, log=print):
     oh = round(out_w * CANVAS_H / (CROP[2] - CROP[0]))
     # crop：整片统一裁一次（黑边这类逐帧会变化的边，绝不能逐帧各裁，否则脚底会抖）
     crop = tuple(spec["crop"]) if spec.get("crop") else None
+
+    src_fps = probe_src_fps(src)
+    if src_fps and abs(src_fps - fps) > 0.5:
+        log("源片 %.2ffps → 目标 %dfps：抽帧时统一重采样（锚点按目标帧率算，不会抖）"
+            % (src_fps, fps))
 
     raw_dir = os.path.join(BASE, "raw_" + cid)
     files = extract_frames(src, raw_dir, fps)
@@ -146,7 +163,7 @@ def build_clip(spec, log=print):
     oy = round(oh - 2 - b * scale)
     log("主体框 %s，缩放 %.3f，偏移 %s" % ([l, t, r, b], scale, [ox, oy]))
 
-    out_dir = os.path.join(ROOT, "frames_" + cid)
+    out_dir = spec.get("out_dir") or os.path.join(ROOT, "frames_" + cid)
     os.makedirs(out_dir, exist_ok=True)
     for f in glob.glob(os.path.join(out_dir, "*.png")) + glob.glob(os.path.join(out_dir, "*.webp")):
         os.remove(f)
@@ -170,10 +187,21 @@ def build_clip(spec, log=print):
         if n % 20 == 0:
             log("  %d/%d" % (n, len(files)))
 
+    foot = [round((l + r) / 2 * scale + ox), oh - 2]
+    total = sum(os.path.getsize(os.path.join(out_dir, x)) for x in os.listdir(out_dir))
+    info = {"id": cid, "count": n, "bytes": total, "width": out_w, "height": oh,
+            "scale": round(scale, 4), "offset": [ox, oy], "foot": foot,
+            "fps": fps, "format": fmt, "out_dir": out_dir,
+            "crop": list(crop) if crop else None}
+    if spec.get("out_dir"):
+        # pack 模式：清单由调用方写进 manifest，这里不碰 deskpet-mini/meta.json
+        log("frames_%s：%d 帧，%.2f MB，%dx%d（scale %.3f，offset %s，脚底 y=%d）"
+            % (cid, n, total / 1e6, out_w, oh, scale, [ox, oy], foot[1]))
+        return info
+
     meta_path = os.path.join(ROOT, "meta.json")
     meta = json.load(open(meta_path, encoding="utf-8")) if os.path.exists(meta_path) else {}
     meta.setdefault("canvas", {"w": out_w, "h": oh, "src_w": CROP[2] - CROP[0], "src_h": CANVAS_H})
-    foot = [round((l + r) / 2 * scale + ox), oh - 2]
     meta.setdefault("clips", {})[cid] = {
         "dir": "frames_" + cid, "fps": fps, "count": n, "format": fmt,
         "scale": round(scale, 4), "offset": [ox, oy], "foot": foot,
@@ -183,9 +211,8 @@ def build_clip(spec, log=print):
     }
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(meta, f, ensure_ascii=False, indent=2)
-    total = sum(os.path.getsize(os.path.join(out_dir, x)) for x in os.listdir(out_dir))
     log("frames_%s：%d 帧，%.2f MB，%dx%d" % (cid, n, total / 1e6, out_w, oh))
-    return {"id": cid, "count": n, "bytes": total, "width": out_w, "height": oh}
+    return info
 
 
 def main():

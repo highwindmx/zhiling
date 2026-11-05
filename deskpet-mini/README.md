@@ -31,18 +31,19 @@
 
 ## 快速开始
 
-前置：Windows 10/11 + Python 3.10 以上。仓库里**不含帧序列**（15 段共约 72.9MB，故意不入库），第一次跑要先重建，大约几分钟。
+前置：Windows 10/11 + Python 3.11 以上。仓库里**不含帧序列**（11 段约 53MB，故意不入库），第一次跑要先重建或从 Release 附件下载，大约几分钟。
 
 ```bat
 cd deskpet-mini
 
-:: 1) 装依赖
-python -m venv .venv
-.venv\Scripts\pip install -r requirements.txt -i https://mirrors.cloud.tencent.com/pypi/simple
+:: 1) 装依赖（推荐 uv：uv.lock 保证版本一致）
+uv sync
+:: 没有 uv 才用 pip 这条路：
+::   python -m venv .venv
+::   .venv\Scripts\pip install -r requirements.txt -i https://mirrors.cloud.tencent.com/pypi/simple
 
-:: 2) 重建帧序列（需要 pillow / numpy / scipy / imageio-ffmpeg）
-.venv\Scripts\pip install pillow numpy scipy imageio-ffmpeg -i https://mirrors.cloud.tencent.com/pypi/simple
-.venv\Scripts\python build\build_frames.py
+:: 2) 重建帧序列（只需一次；已从 Release 下载 packs/ 的可跳过）
+uv run python build\build_frames.py
 
 :: 3) 启动
 run.bat
@@ -51,10 +52,32 @@ run.bat
 也可以直接命令行启动：
 
 ```bat
-.venv\Scripts\python pet.py
-.venv\Scripts\python pet.py --width 500      :: 固定像素宽度，忽略档位
-.venv\Scripts\python pet.py --log build\startup.log   :: 记录首帧时间/内存，用于测性能
+uv run python pet.py
+uv run python pet.py --width 500      :: 固定像素宽度，忽略档位
+uv run python pet.py --log build\startup.log   :: 记录首帧时间/内存，用于测性能
 ```
+
+已装好 `.venv` 的老用户把上面的 `uv run python` 换成 `.venv\Scripts\python.exe` 即可，两条路径等价。
+
+### 安装依赖（uv 优先）
+
+- **uv**：`uv sync`（在 `deskpet-mini` 目录下）。`uv.lock` 已入库，能复现同一套版本；`uv sync` 默认就写进 `.venv`，**只有这一个环境**。
+- **pip 备选（仅当没有 uv）**：`python -m venv .venv` → `.venv\Scripts\pip install -r requirements.txt`。
+- `.venv\requirements.txt` 标为 **legacy**：uv 路径不需要它，别两条路径混用（同一个解释器装两遍容易版本打架）。
+
+### 素材目录与迁移
+
+帧现在按 pack 组织：`packs/<packId>/{manifest.json, clips.json, frames/<clipId>/}`。老仓库里扁平的 `deskpet-mini/frames_*` 还没迁就运行 `uv run python build\migrate_packs.py --dry-run` 看计划，再去掉 `--dry-run` 执行（移动不复制，旧清单备份到 `packs/.legacy/`）。没迁移也能跑：程序先找 `packs/`，找不到才回退旧的 `frames_*` 并在启动日志里提示。
+
+当前有两个 pack：
+
+| packId | 内容 | 段数 |
+|---|---|---|
+| `maid-dsh` | DSMaid 系列（待机/工作中/真开心/不高兴/思考/打哈欠/无奈/看手机/吃米饭/炸毛/得意） | 11 |
+| `maid-basic` | 第一批素材（待机/挥手/打字/抱臂） | 4 |
+
+用哪个由 `packs/active.json` 决定（默认 `maid-dsh`，改一行即可切换）。
+
 
 默认中档：宽度 = 可用屏幕宽的 15%。启动位置在屏幕右下角。
 
@@ -64,7 +87,8 @@ run.bat
 |---|---|
 | 左键拖动 | 移动位置 |
 | 双击 | 走 `double_click` 状态映射（大默认「炸毛」）；状态映射没配时退回"播下一个动作" |
-| 右键 → 动作：`displayName` 列出的 10 个动作 | 直接播指定动作（不经过状态映射） |
+| 右键 → 动作：`displayName` 列出的动作 | 直接播指定动作（不经过状态映射） |
+| 右键 → 素材工坊… | 拉起 `workshop.bat`（uv 优先，没有 uv 用 `.venv`；都找不到会弹窗说明怎么装） |
 | 右键 → 尺寸：小 / 中 / 大 | 屏幕宽的 10% / 15% / 30% |
 | 右键 → 退出 | 关闭 |
 | `Esc` | 关闭（需先点一下宠物让窗口拿到焦点） |
@@ -73,7 +97,7 @@ run.bat
 
 ## 状态映射（哪个状态播哪个动作）
 
-所有"什么时候自动播什么"都由 `..\packs\dsh\state-map.json` 决定，**改完保存就生效**（1s 轮询 + 内容比对 + 800ms 去抖；
+所有"什么时候自动播什么"都由当前 pack 的 `packs\<packId>\state-map.json` 决定（默认 `packs\maid-dsh\state-map.json`），**改完保存就生效**（1s 轮询 + 内容比对 + 800ms 去抖；
 解析失败保留上一版并提示，坏的某一条只废自己）。tauri 版读的是同一份文件的副本（`assets\state-map.json`），字段语义完全一致。
 
 | 状态 | 进入条件 | 默认动作 | priority |
@@ -105,29 +129,31 @@ zhiling/
 │  ├─ pet.py                运行时代码（窗口、播放、拖动、菜单）
 │  ├─ state_map.py          状态映射（10 状态、三道闸、提醒态、20 条调试日志）
 │  ├─ run.bat               双击启动宠物
-│  ├─ workshop.bat          双击启动素材工坊
-│  ├─ clips.json            clipId / displayName / 类型 / 是否循环 / 播放优先级 + 顶层 defaultIdle
-│  ├─ requirements.txt      运行时依赖（legacy，见下方"环境"一节）
-│  ├─ meta.json             画布尺寸、每段 fps/帧数/缩放/脚底锚点
+│  ├─ workshop.bat          双击启动素材工坊（uv 优先，降级 .venv）
+│  ├─ clips.json            当前 active pack 的运行时索引（由 build/pack.py 生成）
+│  ├─ pyproject.toml        uv 依赖清单（Python ≥3.11）
+│  ├─ uv.lock               锁定的依赖版本（入库，保证可复现）
+│  ├─ requirements.txt      pip 依赖（legacy：仅在没装 uv 时用）
+│  ├─ meta.json             旧清单（迁移后仅作兜底，正式信息在 packs/<pack>/manifest.json）
 │  ├─ assets/               两段源视频（原文件名保留）
 │  ├─ presets/              素材工坊参数预设（*.json，可随仓库共享）
 │  ├─ build/                抠像与构建脚本
 │  │  ├─ keyer.py           抠像核心（HSV 阈值 + 去溢色 + 连通域 + 羽化），命令行与工坊共用
 │  │  ├─ build_frames.py    视频 → 帧序列 + meta.json（工坊生成也调它）
-│  │  ├─ workshop.py        素材工坊（单文件 PyQt6 界面）
+│  │  ├─ pack.py            pack 读写：manifest / clips.json / 备份 / 同步 runtime 索引
+│  │  ├─ migrate_packs.py   旧扁平 frames_* → packs/<packId>/ 迁移（幂等，--dry-run）
+│  │  ├─ workshop.py        素材工坊（单文件 PyQt6 界面，三步：导入/抠像/导出）
+│  │  ├─ _accept.py         "默认值一次跑通"验收（得意状 30fps + 炸毛黑边绿幕）
 │  │  ├─ compare_clips.py   判断新素材能不能接（机位/绿幕/人物一致性）
-│  │  ├─ key_test_action.py 单帧抠像试色卡
 │  │  ├─ measure.py         干净进程下的启动耗时/内存
 │  │  ├─ test_all.py        端到端自测（双击、右键选动作、拖动、切档）
-│  │  ├─ test_workshop.py   工坊自测（预览 fps、预设、登记 clips.json）
 │  │  └─ regress_keyer.py   抠像回归（同参数重跑，与已提交帧逐像素对比）
 │  ├─ docs/screenshots/     效果截图（README 用）
-│  ├─ frames_dsh_*          ← 生成产物，不入库（11 段，共 53.3MB）
-│  ├─ frames_idle/          ← 生成产物，不入库（96 帧 / 4.4MB）
-│  ├─ frames_action/        ← 生成产物，不入库（121 帧 / 4.9MB）
-│  ├─ frames_action2/       ← 打字（107 帧 / 5.3MB）
-│  └─ frames_action3/       ← 抱臂（107 帧 / 4.9MB）
-├─ packs/dsh/               素材包：state-map.json（状态映射；将来 manifest.json 见 docs/material-packs.md）
+├─ packs/
+│  ├─ active.json           当前启用的 pack（{"pack":"maid-dsh"}）
+│  ├─ maid-dsh/             manifest.json + clips.json + state-map.json + frames/<clipId>/（11 段，不入库）
+│  ├─ maid-basic/           manifest.json + clips.json + frames/<clipId>/（4 段，不入库）
+│  └─ .legacy/              迁移前的旧清单备份（meta.json / 旧 manifest，不入库）
 └─ deskpet-demo/            早期网页原型（浏览器里跑的 canvas 版）
 ```
 
@@ -172,25 +198,30 @@ q80 的判断依据：同帧在 576px（磁盘原尺寸 1:1）、384px（大档�
 
 换角色/换视频的顺序建议：先跑 `build\compare_clips.py` 看新素材的绿幕色相和人物高度是否和现有一致，再调 `ACT_P`，用 `build\key_test_action.py` 出单帧试色卡确认边缘，最后 `build_frames.py` 全量。
 
-## 素材工坊（图形界面）
+## 素材工坊（图形界面 = 素材包编辑器）
 
-不想改代码调参数时用它。前置和上面一样（`pillow` / `numpy` / `scipy` / `imageio-ffmpeg` 都装进 `.venv`），然后双击 `deskpet-mini\workshop.bat`。
+不想改代码调参数时用它。双击 `deskpet-mini\workshop.bat`（也可以从宠物右键菜单「素材工坊…」拉起）。工坊优先 `uv run`，没有 uv 用 `.venv`；两者都没有会明确提示怎么装，不会静默失败。
 
-界面分四块：
+界面压成三步，一屏三块：
 
-- **左**：视频列表，`添加视频…` 支持多选，也可以把 mp4/mov/webm 直接拖进窗口；clipId 按文件名自动生成，生成前可改
-- **中**：棋盘格画布，`原片 / 抠像后 / alpha` 三视图切换；下方帧滑杆挑某一帧细看
-- **右**：抠像参数，每行末尾的百分比 = 把该参数往一侧推 12% 量程后 alpha 变化的像素占比（越小说明该参数对当前画面越没用）
-- **底**：输出宽度 / 帧率 / 格式 / 质量 + `生成帧序列` + 进度 + 日志（可选中复制）
+- **① 导入**：视频拖入/多选，列表显示时长/分辨率/fps；填中文显示名，`clipId` 由显示名自动生成（拼音 → ASCII，如 `得意状` → `de_yi_zhuang`；没装拼音库就 `clip_01` 递增），只读展示，手改在「高级参数」
+- **② 抠像**：左边棋盘格画布，`原片 / 抠像后 / alpha` 三视图 + 帧滑杆；默认只露两个开关——`自动裁黑边`（默认开，裁掉区域画半透明红遮罩）和`取背景色（点四角取样）`；色相/饱和度/软地板/去溢色/羽化折叠在「高级」，带「恢复默认」
+- **③ 导出**：只剩 `目标 pack`、`开始生成`、`取消`、`打开输出目录` + 进度/日志 + 结果摘要（N 帧 / MB / 脚底锚点 y / 残留绿边 % / scale / offset）
 
-拖动滑杆时用 320 长边快速预览（抠像约 40fps，alpha 约 40fps），停手 400ms 后自动补一张 640 长边完整预览；真正生成用源分辨率，不受预览尺寸影响。
+导出参数（画布 576×530、24fps、WebP q80）是 **pack 级固定值**，写在 `packs/<packId>/manifest.json`，导出页不再出现。画布只在「新建素材包」弹窗里问一次（packId / 角色名 / 画布），改画布会让 pack 里所有 clip 都要重抠，没有特别理由别改。
+
+生成直接写进 `packs\<packId>\frames\<clipId>\`，同时合并 `manifest.json`；目标 pack 是当前 active pack 时会同步 `deskpet-mini\clips.json`。同 `clipId` 重抠**覆盖**旧帧（旧帧进 `packs\<packId>\.backup\`，留最近 3 份），不产生 `_v2` 目录。
+
+**默认值必须一次跑通**：拖进一个新视频、什么都不改、点生成，结果可用。验收脚本 `build\_accept.py` 用得意状（30fps→24）和炸毛（黑边+绿幕）各跑一遍，结果见 `docs\material-packs.md`。
+
+拖动滑杆时用 320 长边快速预览，停手 400ms 后自动补一张 640 长边完整预览；真正生成用源分辨率，不受预览尺寸影响。
 
 ### 参数含义
 
 | 参数 | 默认 | 作用 |
 |---|---|---|
 | 背景色相 | 136 | 绿幕色相（0-360°）。纯绿一般 120-150；点`取背景色`从四角取样 |
-| 色相内 | 20 | 与背景色相差 ≤ 这个角度 → 判为背景 |
+| 色相内 | 18 | 与背景色相差 ≤ 这个角度 → 判为背景 |
 | 色相外 | 34 | 相差 ≥ 这个角度 → 判为前景，中间是软过渡 |
 | 饱和度下限 | 0.30 | 饱和度过低（灰白）不算背景，保护白围裙 |
 | 饱和度上限 | 0.55 | 要够饱和才算绿，压掉阴影里的淡绿 |
@@ -201,12 +232,14 @@ q80 的判断依据：同帧在 576px（磁盘原尺寸 1:1）、384px（大档�
 
 ### 批量流程
 
-1. 拖入一个或多个视频，逐个点选
-2. 点`取背景色` → 切 alpha 视图确认边框干净 → 绿边重就加大`去溢色强度`/`羽化`
+1. 多选拖入视频（一次排队，逐段处理）
+2. 默认值直接点`开始生成`；不满意再点`取背景色`/看 alpha 视图调高级参数
 3. 想复用风格就`存为…`存成预设（写到 `presets\<名>.json`），下个视频直接在下拉里选
-4. 底部设宽度/帧率/格式/质量；勾`登记到 clips.json`，填 clipId（如 `action4`）、右键菜单里的显示名、类型（idle/action）、是否循环、优先级
-5. 点`生成帧序列`：写 `frames_<clipId>`、合并 `meta.json`，同时把 clip 写进 `clips.json`（同 id 覆盖）
-6. **重启宠物（双击 `run.bat`）才生效**
+4. 生成完会写入 `manifest.json` + `clips.json`，并在日志里打出帧数/体积/锚点/残留绿
+5. **重启宠物（双击 `run.bat`）才生效**
+
+**工坊不是运行时依赖**：桌宠运行只需要 `packs\<packId>\frames\`，工坊只是生成/改帧的编辑器。所以 Tauri 版单 exe 不带 Python，右键菜单里点「素材工坊…」时能找到 `workshop.bat` 就拉起，找不到就提示"该功能需要 Python 版工具"。
+
 
 命令行仍可用 `build\build_frames.py --spec <json>`。两条路径共用 `keyer.key_frame` 与 `build_frames.build_clip`，工坊里没有第二份抠像实现；`build\regress_keyer.py` 会用同参数重跑一段与仓库里的帧逐像素对比，作为回归。
 

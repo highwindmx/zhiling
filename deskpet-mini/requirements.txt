@@ -1,7 +1,10 @@
+# legacy：仅在没装 uv 时用这条路 —— python -m venv .venv 后 pip install -r requirements.txt
+# 推荐路径是 uv sync（依赖见 pyproject.toml / uv.lock，版本已锁定）。别两条路径混用同一个解释器。
 PyQt6>=6.6
 
-# 仅重建帧序列（build\build_frames.py）时需要，运行桌宠本身不需要：
-# pillow
-# numpy
-# scipy
-# imageio-ffmpeg
+# 重建帧序列 / 素材工坊还需要这些（与 pyproject.toml 一致）：
+pillow
+numpy
+scipy
+imageio-ffmpeg
+pypinyin

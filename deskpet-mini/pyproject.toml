@@ -1,0 +1,17 @@
+[project]
+name = "deskpet-mini"
+version = "0.2.0"
+description = "桌宠（PyQt6 版）：透明窗口 + 状态映射 + 素材工坊"
+requires-python = ">=3.11"
+# 只列代码里真实 import 的包（build/ 与 pet.py 一起共用这一套环境）
+dependencies = [
+    "PyQt6>=6.6",
+    "Pillow>=10.0",
+    "numpy>=1.24",
+    "scipy>=1.11",
+    "imageio-ffmpeg>=0.4.9",
+    "pypinyin>=0.50",          # 工坊：中文显示名 → ASCII clipId（缺席时退回 clip_NN）
+]
+
+[tool.uv]
+package = false

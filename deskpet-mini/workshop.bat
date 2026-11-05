@@ -2,15 +2,37 @@
 chcp 65001 >nul
 cd /d "%~dp0"
 
-rem ç´ æå·¥åŠï¼šè§†é¢‘ â†’ é€æ˜å¸§åºåˆ—ã€‚ç•Œé¢é‡Œæ”¹å‚æ•°ã€è°ƒå¥½å†ç”Ÿæˆã€‚
-if exist ".venv\Scripts\python.exe" (
-    ".venv\Scripts\python.exe" build\workshop.py 1>>build\workshop.log 2>&1
-) else (
-    where python >nul 2>nul
+rem ËØ²Ä¹¤·» = ËØ²Ä°ü±à¼­Æ÷£ºuv ÓÅÏÈ£»Ã»ÓĞ uv ¾ÍÓÃ .venv£¨Á½ÌõÂ·¾¶¶¼ÄÜÅÜ£¬Ê§°Ü¶¼»áËµÔ­Òò£©
+where uv >nul 2>nul
+if not errorlevel 1 (
+    echo [¹¤·»] ÓÃ uv run Æô¶¯£¨ÒÀÀµÓÉ uv.lock ±£Ö¤Ò»ÖÂ£©
+    uv run python build\workshop.py
     if errorlevel 1 (
-        echo æ‰¾ä¸åˆ° Pythonã€‚è¯·å…ˆå»ºå¥½ .venv å¹¶è£… requirements.txt
+        echo.
+        echo [¹¤·»] uv run Ê§°Ü£¬³£¼ûÔ­Òò£º
+        echo   - ÒÀÀµÃ»×°£ºÏÈÔÚ±¾Ä¿Â¼Ö´ĞĞ uv sync
+        echo   - ²Ö¿âÔÚ¹²ÏíÅÌ/ÍøÂçÅÌ£ºuv Ğ´ uv.lock »á¡¸¾Ü¾ø·ÃÎÊ¡¹£¬°Ñ²Ö¿â¿½µ½±¾µØ´ÅÅÌÔÙÅÜ
         pause
-        exit /b 1
     )
-    python build\workshop.py 1>>build\workshop.log 2>&1
+    exit /b 0
 )
+
+echo [¹¤·»] Ã»ÓĞÕÒµ½ uv£¬½µ¼¶µ½ .venv\Scripts\python.exe
+if exist ".venv\Scripts\python.exe" (
+    ".venv\Scripts\python.exe" build\workshop.py
+    if errorlevel 1 (
+        echo.
+        echo [¹¤·»] .venv ÀïµÄ½âÊÍÆ÷ÅÜ²»ÆğÀ´£ºÒÀÀµ¿ÉÄÜÃ»×°È«
+        echo            .venv\Scripts\pip install -r requirements.txt
+        pause
+    )
+    exit /b 0
+)
+
+echo.
+echo [¹¤·»] Ã»ÓĞ¿ÉÓÃµÄ Python »·¾³£¬¶şÑ¡Ò»£º
+echo   1) ×° uv ºóÔÚ±¾Ä¿Â¼Ö´ĞĞ£ºuv sync
+echo   2) ÓÃ pip£ºpython -m venv .venv£¬ÔÙ .venv\Scripts\pip install -r requirements.txt
+echo Ïê¼û README.md µÄ¡¸°²×°ÒÀÀµ£¨uv ÓÅÏÈ£©¡¹¡£
+pause
+exit /b 1
