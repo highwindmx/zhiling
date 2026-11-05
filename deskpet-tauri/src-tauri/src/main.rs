@@ -174,6 +174,59 @@ fn log_event(msg: String) {
     log_line(&msg);
 }
 
+// ---- 点击穿透 --------------------------------------------------------------
+// 方案：窗口级 set_ignore_cursor_events（Rust）+ 前端降采样 alpha 掩码判断指针是否在
+// 宠物身上。没选子类化 WM_NCHITTEST：Tauri 2 没有暴露窗口过程，得用
+// SetWindowSubclass + unsafe 回调，还要把掩码每帧通过 IPC 推给 Rust；而
+// set_ignore_cursor_events 是官方 API，只要 50ms 轮询一次指针位置就能做到同样的
+// 效果。代价是轮询有 0~50ms 延迟（快速"移入即点击"可能漏一拍），已在 README 记录。
+
+#[repr(C)]
+struct WinPoint {
+    x: i32,
+    y: i32,
+}
+
+#[link(name = "user32")]
+extern "system" {
+    fn GetCursorPos(p: *mut WinPoint) -> i32;
+}
+
+#[derive(serde::Serialize)]
+struct CursorLocal {
+    x: i32,
+    y: i32,
+    inside: bool,
+}
+
+/// 指针相对窗口左上角的物理像素坐标（窗口无边框，outer 即内容区原点）。
+#[tauri::command]
+fn cursor_local(app: tauri::AppHandle) -> Result<CursorLocal, String> {
+    let win = app
+        .get_webview_window("main")
+        .ok_or("main window missing")?;
+    let mut p = WinPoint { x: 0, y: 0 };
+    let ok = unsafe { GetCursorPos(&mut p) };
+    let origin = win.outer_position().map_err(|e| e.to_string())?;
+    let size = win.inner_size().map_err(|e| e.to_string())?;
+    let (x, y) = (p.x - origin.x, p.y - origin.y);
+    let inside = ok != 0
+        && x >= 0
+        && y >= 0
+        && x < size.width as i32
+        && y < size.height as i32;
+    Ok(CursorLocal { x, y, inside })
+}
+
+#[tauri::command]
+fn set_click_through(app: tauri::AppHandle, ignore: bool) -> Result<(), String> {
+    let win = app
+        .get_webview_window("main")
+        .ok_or("main window missing")?;
+    win.set_ignore_cursor_events(ignore)
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn quit_app(app: tauri::AppHandle) {
     log_line(&format!("quit_ms={} pid={}", elapsed_ms(), std::process::id()));
@@ -200,7 +253,9 @@ fn main() {
             set_tier,
             show_menu,
             log_event,
-            quit_app
+            quit_app,
+            cursor_local,
+            set_click_through
         ])
         .on_menu_event(|app, event| on_menu_event(app, event.id().0.as_str()))
         .setup(|app| {

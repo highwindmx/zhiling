@@ -64,9 +64,36 @@ src-tauri\target\release\deskpet-tauri.exe
 | 左键拖动 | 原生拖动（`startDragging()`），停在哪待在哪 |
 | 双击 | 待机时按 `priority` 播放下一个动作，播完交叉淡化回待机**续播位** |
 | 右键 | 原生菜单：`尺寸：小/中/大`（当前档带 ✓）、`动作：真开心/工作中/不高兴`、`退出` |
+| 点宠物旁边的透明区 | **穿透**：事件直达下面那个窗口，宠物不响应（见「空白处穿透」） |
 | `Esc` | 退出 |
 
 三档 = 屏幕可用宽的 10% / 15% / 30%，下限 140 逻辑像素（与 mini 的 `max(140, ...)` 一致）；切档保持窗口左上角，只有启动时贴右下角。
+
+## 空白处穿透（点宠物=正常，点旁边透明区=直达下层窗口）
+
+**做法**：window 级开关（Rust `set_ignore_cursor_events`，Win32 是 `WS_EX_TRANSPARENT`）+ 前端降采样 alpha 掩码判定指针是否在宠物身上，50ms 轮询一次光标（`cursor_local` 命令返回窗口内坐标），命中状态变化时才 `invoke("set_click_through")`。
+
+**为什么不做 `WM_NCHITTEST` 子类化**：
+1. Tauri 2 不暴露窗口过程，得自己 `SetWindowSubclass` 并把 WNDPROC 里的每个像素判定接到 JS 掩码上——要么每帧把掩码 IPC 到 Rust（24fps × ~8KB），要么在 Rust 里再实现一遍降采样，两份实现必然漂移；
+2. 先在 PyQt6 里试过同一思路（`QWidget.nativeEvent` 收 `WM_NCHITTEST`），实测 **Qt6 在原生窗口层就把这条消息处理掉了**，`nativeEvent` 一次都收不到（同时 `super().nativeEvent()` 会 `0xC000041D` 崩），说明"框架级命中测试"这条路在两边都不稳。
+`set_ignore_cursor_events` 是官方 API、语义就是"整个窗口不吃鼠标"，配合掩码只在指针越过轮廓时切换，代价是一次 IPC + 一次 `SetWindowLong`，没有逐像素跨进程通信。
+
+**掩码**：`MASK_DIV=2`（192×177 → 96×88）、`MASK_ALPHA_MIN=8`；离屏 canvas 用 `drawImage` 缩小后 `getImageData` 取 alpha；**按帧缓存**（key = `clip:idx`，LRU 600），`MASK_REFRESH_MS=150` 节流，只有帧序号变了才重建。所以待机段第一圈 96 次构建之后就不再重建，稳态是 0 次/秒；重建一次 ≈ 一次 96×88 的 `drawImage` + 一次 `getImageData`（同口径在 mini 侧实测 0.95~1.12ms/次，见下）。
+
+**实测**（构建产物 exe + 最大化 WinForms 对照窗口，真实光标 + `mouse_event` 注入，日志在 `build/bench-logs/`）：
+
+| 检查 | 结果 |
+| --- | --- |
+| 宠物身体单击 | 底层窗口**收不到** `mousedown`（0 行新增） |
+| 宠物身体双击 | 前端收到 `dblclick` 并切动作（`e2e-tauri.log`） |
+| 宠物身体按下并拖动 | 窗口原点 `(1063,562) → (1018,526)`，`startDragging` 生效 |
+| 紧邻透明区（身体右 2px 外）单击 | 底层窗口**收到** `mousedown`（0→1 行） |
+| 窗口四角空白 | `WindowFromPoint` 返回下面的 IDE 窗口，不是宠物 |
+| 边缘 ±2px | `edge+2` 归宠物；`edge-2` 已在掩码外——**偏保守**（宁可多算 2px 给宠物，也不误判穿透） |
+
+`MASK_DIV=2` 的量化误差最多 2 逻辑像素，所以"1~2px 内不误判"是靠"向内取整"保证的：掩码按 2×2 块合并，块内只要有一个不透明像素整块算命中。
+
+**局限**：轮询间隔 50ms，指针从透明区快速划到宠物身上时最坏有 50ms 的"这一段仍穿透"窗口（表现为第一下点击可能漏到下层窗口）；要消掉得改成 `WM_NCHITTEST` 或 `mouseenter` 级别的低延迟钩子，本轮没做。
 
 ## 与 deskpet-mini 的差异
 
@@ -138,17 +165,17 @@ powershell -NoProfile -File build\bench-chart.ps1
 
 1. **cargo 增量构建 `拒绝访问 (os error 5)`**：仓库目录带 `Everyone Deny DeleteSubdirectoriesAndFiles`，cargo 覆盖 `.fingerprint` 失败。解法是 `--target-dir %TEMP%\deskpet-tauri-target`（本轮的实测也是这样构建的）。
 2. **透明窗口白闪**：`tauri.conf.json` 里 `visible: false`，前端解出首帧、画到 canvas 之后才调 `show_window`；同时 `shadow: false`、`decorations: false`。本机实测**没有**出现 1px 白边，也没有白闪。
-3. **透明区域仍然吃鼠标**：矩形窗口会截获透明像素上的点击（与 mini 一致，本轮不做穿透）。用 `WindowFromPoint` 在宠物身体上取到的是 `msedgewebview2.exe` 的子窗口，说明命中测试正常、窗口不是点击穿透的。
+3. **透明区域仍然吃鼠标**：第一轮没做穿透时，矩形窗口会截获透明像素上的点击。穿透的做法与实测见上一节；顺带确认了一件事：`WindowFromPoint` 在 `WS_EX_TRANSPARENT` 的窗口上会**跳过**它，所以"点透明区"能不能落到下层，用这个 API 就能判定，不需要真的派发事件。
 4. **WebView2 GPU 进程内存暴涨（791MB）**：一开始待机每循环 96 帧都 `createImageBitmap` + `close()`，Chromium 的纹理回收有延迟，GPU 进程从 553MB 涨到 873MB。改成**整段预载并保留**后 GPU 稳定在 ~155MB，renderer ~93MB。
 5. **动作播完回待机卡顿数秒**：切段时把待机位图也释放了，回待机要重解 96 帧。改为切段只释放上一段动作、待机段常驻（`dropOtherClips([IDLE_ID, id])`），回待机是瞬时的。
 6. **HTML 右键菜单被窗口裁切**：192px 宽的无边框窗口放不下菜单，改用 Tauri 原生 `Menu` + `popup_menu`（菜单可以溢出窗口，靠近屏幕底部时会自动向上翻）。
-7. **本会话无法注入真实鼠标**：`SetCursorPos` / `SendInput` 在这个会话里失效（光标被移到别处）。改用 WebView2 的 CDP（`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222`）派发 `Input.dispatchMouseEvent` 验证双击/动作顺序，Esc 用 CDP 键盘事件验证。**真实拖动**只验证了"窗口可被命中、`startDragging` 已接线"，没有做自动化点击拖动。
+7. **真实鼠标注入时好时坏**：早先 `SetCursorPos` / `SendInput` 全部失效，只能退回 CDP 派发事件；穿透这一轮里注入恢复过一次（四项点击/拖动检查全 PASS，见上一节表格），之后再测又全部失效——判定是**会话被锁屏**（截屏只能拿到锁屏页、`SetCursorPos` 返回 0）。所以点击类证据只采到了那一次成功运行的日志，进程内行为另外用 `SendMessage(WM_LBUTTONDBLCLK)` 验证过。
 8. **NSIS 安装包没打出来**：`npm run build` 需要从 GitHub 下载 NSIS 3.13 + `nsis_tauri_utils.dll`，受限网络下两次都 `timeout: global`；手工把 NSIS 与 dll 放进 `%LOCALAPPDATA%\tauri\NSIS` 后仍被 tauri-cli 判为"目录缺文件"并重下。所以本轮的安装包体积为 N/A——单文件 exe 拷走即可运行，不依赖安装包。
 
 ## 已知限制
 
 - 无托盘、无单实例、无开机自启（与 mini 保持一致，连开两次会有两只）。
-- 未做点击穿透、未做多角色 / AI / 自动更新（本轮范围外）。
+- 穿透靠 50ms 轮询，指针快速越过轮廓时最坏漏 50ms（见「空白处穿透」）；未做多角色 / AI / 自动更新（本轮范围外）。
 - 待机内存受 WebView2 多进程基线影响，短期不会低于 ~450MB。
 - 只在 Windows 11 本机验证；macOS / Linux 未测。
 - 首帧 ~1s（本机观测 0.67~1.99s，波动主要来自 WebView2 运行时初始化），比 mini 慢；如需更快可见，可把首帧改成内联 data URL 或先显示静态占位图（本轮未做）。

@@ -139,6 +139,10 @@ function clearBitmaps() {
     if (bmp && typeof bmp.close === "function") bmp.close();
   }
   bitmaps.clear();
+  // 尺寸变了，掩码也跟着失效
+  maskCache.clear();
+  maskCur = null;
+  maskKey = "";
 }
 
 function prefetch(id, idx) {
@@ -186,6 +190,91 @@ function drawCurrent(bmp) {
   ctxA.drawImage(bmp, 0, 0, canvasA.width, canvasA.height);
 }
 
+// ---- 点击穿透 --------------------------------------------------------------
+// 窗口在 Rust 侧用 set_ignore_cursor_events 整体开关；这里是"指针在不在宠物身上"
+// 的判定：把当前帧画到 1/MASK_DIV 大小的离屏 canvas，读 alpha 得到二值掩码。
+// 掩码按帧缓存（同一帧只算一次），重建节流 MASK_REFRESH_MS，正常待机第二轮起
+// 命中的都是缓存。轮询 50ms 是因为窗口一旦 ignore，pointermove 就收不到了。
+const MASK_DIV = 2;           // 与 pet.py 一致，边界精度 ~2px
+const MASK_ALPHA_MIN = 8;
+const MASK_REFRESH_MS = 150;
+const HIT_POLL_MS = 50;
+const MASK_CACHE_MAX = 600;
+
+const maskCanvas = document.createElement("canvas");
+const maskCtx = maskCanvas.getContext("2d", { willReadFrequently: true });
+const maskCache = new Map();  // "id/idx" -> {gw, gh, alpha}
+let maskCur = null;
+let maskKey = "";
+let maskLastAt = 0;
+let maskBuilds = 0, maskLastMs = 0, maskTotalMs = 0;
+
+function maskFor(key, bmp) {
+  let m = maskCache.get(key);
+  if (m) { maskCache.delete(key); maskCache.set(key, m); return m; }  // LRU 触碰
+  const gw = Math.max(1, Math.floor(bmpW / MASK_DIV));
+  const gh = Math.max(1, Math.floor(bmpH / MASK_DIV));
+  if (maskCanvas.width !== gw) maskCanvas.width = gw;
+  if (maskCanvas.height !== gh) maskCanvas.height = gh;
+  const t0 = performance.now();
+  maskCtx.clearRect(0, 0, gw, gh);
+  maskCtx.drawImage(bmp, 0, 0, gw, gh);
+  const data = maskCtx.getImageData(0, 0, gw, gh).data;
+  const alpha = new Uint8Array(gw * gh);
+  for (let i = 0; i < alpha.length; i++) alpha[i] = data[i * 4 + 3];
+  const dt = performance.now() - t0;
+  maskBuilds++; maskLastMs = dt; maskTotalMs += dt;
+  m = { gw, gh, alpha };
+  maskCache.set(key, m);
+  while (maskCache.size > MASK_CACHE_MAX) maskCache.delete(maskCache.keys().next().value);
+  return m;
+}
+
+function updateMask(id, idx, bmp, force = false) {
+  const now = performance.now();
+  if (!force && now - maskLastAt < MASK_REFRESH_MS) return;
+  const key = `${id}/${idx}`;
+  if (key === maskKey && !force) return;
+  maskLastAt = now;
+  maskCur = maskFor(key, bmp);
+  maskKey = key;
+}
+
+let clickThrough = null;
+async function setClickThrough(ignore) {
+  if (ignore === clickThrough) return;
+  const prev = clickThrough;
+  clickThrough = ignore;
+  try {
+    await invoke("set_click_through", { ignore });
+    logEvent(`click_through ignore=${ignore}`);
+  } catch (_) {
+    clickThrough = prev;
+  }
+}
+
+function hitAt(lx, ly) {
+  const m = maskCur;
+  if (!m) return true;   // 掩码还没建好时先按命中处理，避免把点击放给下层
+  const cx = Math.floor(lx * m.gw / Math.max(1, bmpW));
+  const cy = Math.floor(ly * m.gh / Math.max(1, bmpH));
+  if (cx < 0 || cy < 0 || cx >= m.gw || cy >= m.gh) return false;
+  return m.alpha[cy * m.gw + cx] >= MASK_ALPHA_MIN;
+}
+
+async function decide(lx, ly, inside) {
+  const hit = inside && hitAt(lx, ly);
+  await setClickThrough(!hit || dragging);
+  return hit;
+}
+
+async function pollCursor() {
+  try {
+    const p = await invoke("cursor_local");
+    if (p) await decide(p.x, p.y, p.inside);
+  } catch (_) { /* 命令不可用（浏览器预览）时什么都不做 */ }
+}
+
 let hasPainted = false;
 
 function crossFade(bmp) {
@@ -221,6 +310,7 @@ async function startClip(id, { isIdle = false, resumeFrom = 0 } = {}) {
     const bmp = await loadBitmap(id, idx);
     if (token !== switchToken) return; // 被更新的切换取代
     crossFade(bmp);
+    updateMask(id, idx, bmp, true);
     logEvent(`clip_start id=${id} idle=${isIdle} idx=${idx}`);
     state = {
       id, idx, isIdle,
@@ -261,7 +351,9 @@ function loop(now) {
     const key = `${s.id}/${nextIdx}`;
     if (bitmaps.has(key)) {
       s.idx = nextIdx;
-      drawCurrent(touch(bitmaps, key));
+      const bmp = touch(bitmaps, key);
+      drawCurrent(bmp);
+      updateMask(s.id, s.idx, bmp);
       prefetch(s.id, s.idx);
       s.next = now + interval;
     } else {
@@ -376,6 +468,12 @@ window.addEventListener("keydown", (e) => {
 let paused = false;
 window.__deskpetDebug = {
   stats: () => ({ bitmaps: bitmaps.size, pending: pending.size, state: state && state.id }),
+  mask: () => ({ key: maskKey, gw: maskCur && maskCur.gw, gh: maskCur && maskCur.gh,
+                 builds: maskBuilds, lastMs: maskLastMs, totalMs: maskTotalMs,
+                 cache: maskCache.size, clickThrough }),
+  hitAt: (x, y) => hitAt(x, y),
+  simCursor: (x, y) => decide(x, y, x >= 0 && y >= 0 && x < bmpW && y < bmpH),
+  setIgnore: (v) => setClickThrough(v),
   pause: () => { paused = true; if (raf) cancelAnimationFrame(raf); raf = 0; },
   resume: () => { if (!raf) { paused = false; raf = requestAnimationFrame(loop); } },
 };
@@ -387,8 +485,11 @@ window.__deskpetDebug = {
     sizeCanvases();
     const first = await loadBitmap(IDLE_ID, 0);  // 首帧解码完再显示窗口
     drawCurrent(first);
+    updateMask(IDLE_ID, 0, first, true);
     hasPainted = true;
+    await setClickThrough(true);   // 先整体穿透，指针在宠物身上时由轮询翻回来
     await showWindow();
+    setInterval(pollCursor, HIT_POLL_MS);   // 窗口 ignore 时收不到 pointermove，只能轮询
     state = { id: IDLE_ID, idx: 0, isIdle: true, fps: CLIPS[IDLE_ID].fps || 24,
               next: performance.now() + 1000 / (CLIPS[IDLE_ID].fps || 24) };
     prefetch(IDLE_ID, 0);
