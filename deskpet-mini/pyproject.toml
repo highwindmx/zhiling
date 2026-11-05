@@ -15,3 +15,6 @@ dependencies = [
 
 [tool.uv]
 package = false
+# 默认 hardlink 装到 .venv 时，文件会继承 uv 缓存的 ACL（本机 D 盘的缓存带
+# Everyone:(DENY)(DC)），以后删环境会「Access denied」。改 copy 就不会有这层继承。
+link-mode = "copy"

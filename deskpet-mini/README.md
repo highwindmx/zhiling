@@ -61,7 +61,7 @@ uv run python pet.py --log build\startup.log   :: 记录首帧时间/内存，�
 
 ### 安装依赖（uv 优先）
 
-- **uv**：`uv sync`（在 `deskpet-mini` 目录下）。`uv.lock` 已入库，能复现同一套版本；`uv sync` 默认就写进 `.venv`，**只有这一个环境**。
+- **uv**：`uv sync`（在 `deskpet-mini` 目录下）。`uv.lock` 已入库，能复现同一套版本；`uv sync` 默认就写进 `.venv`，**只有这一个环境**。`pyproject.toml` 里设了 `link-mode = "copy"`：本机 uv 缓存带着 `Everyone:(DENY)(DC)` 的 ACL，默认 hardlink 会让 `.venv` 里的文件也继承它，以后删环境会「拒绝访问」。
 - **pip 备选（仅当没有 uv）**：`python -m venv .venv` → `.venv\Scripts\pip install -r requirements.txt`。
 - `.venv\requirements.txt` 标为 **legacy**：uv 路径不需要它，别两条路径混用（同一个解释器装两遍容易版本打架）。
 
