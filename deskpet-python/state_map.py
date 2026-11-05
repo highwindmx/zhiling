@@ -26,9 +26,13 @@ def _num(v, dflt):
 
 
 def parse_state_map(text, clip_ids):
-    """逐条校验：坏一条只废一条。返回 (rules, long_idle_sec, awaiting_user_sec, errors)。"""
+    """逐条校验：坏一条只废一条。返回 (rules, tiers, long_idle_sec, awaiting_user_sec, errors)。
+
+    - clipId 不存在时先试 fallbackClipIds，全都没有才废掉这一条。
+    - long_idle 允许多条（用 afterSec 分档）；其它状态重复只保留第一条。
+    """
     raw = json.loads(text)
-    rules, errors = {}, []
+    rules, tiers, errors = {}, {}, []
     for i, r in enumerate(raw.get("rules") or []):
         try:
             if not isinstance(r, dict):
@@ -37,14 +41,18 @@ def parse_state_map(text, clip_ids):
             if st not in STATES:
                 raise ValueError("未知状态 %r" % (st,))
             cid = r.get("clipId")
-            if cid not in clip_ids:
-                raise ValueError("clipId 不存在: %r" % (cid,))
-            if st in rules:
-                raise ValueError("状态 %s 重复（只保留第一条）" % st)
+            cids = [cid] + [c for c in (r.get("fallbackClipIds") or []) if isinstance(c, str)]
+            pick = next((c for c in cids if c in clip_ids), None)
+            if pick is None:
+                raise ValueError("clipId 不存在: %r（备用段也没有）" % (cid,))
+            if pick != cid:
+                errors.append("rule#%d 主 %r 不存在，回退到 %s" % (i, cid, pick))
             rp = r.get("repeat") if isinstance(r.get("repeat"), dict) else None
             rule = {
                 "state": st,
-                "clipId": cid,
+                "clipId": pick,
+                "preferredClipId": cid,
+                "afterSec": _num(r.get("afterSec"), 0),
                 "priority": _num(r.get("priority"), 20),
                 "minPlayMs": _num(r.get("minPlayMs"), 0),
                 "cooldownSec": _num(r.get("cooldownSec"), 0),
@@ -60,10 +68,18 @@ def parse_state_map(text, clip_ids):
             # repeat 只对提醒态有效，其它状态写了 interval 也按 once 处理
             if rule["repeat"] and st not in REMINDER_STATES:
                 rule["repeat"]["mode"] = "once"
+            if st in rules:
+                if st != "long_idle" or rule["afterSec"] <= 0:
+                    raise ValueError("状态 %s 重复（只保留第一条）" % st)
+                tiers.setdefault(st, []).append((rule["afterSec"], rule))
+                continue
             rules[st] = rule
+            if st == "long_idle":
+                tiers[st] = [(rule["afterSec"], rule)]
         except Exception as e:                     # noqa: BLE001 - 单条规则容错
             errors.append("rule#%d 无效: %s" % (i, e))
-    return rules, _num(raw.get("longIdleSec"), 600), _num(raw.get("awaitingUserSec"), 30), errors
+    return (rules, tiers, _num(raw.get("longIdleSec"), 600),
+            _num(raw.get("awaitingUserSec"), 30), errors)
 
 
 class StateMap:
@@ -78,6 +94,7 @@ class StateMap:
         self._now = now
         self.log_lines = []
         self.rules = {}
+        self.tiers = {}
         self.long_idle_sec = 600
         self.awaiting_user_sec = 30
         self.state = None
@@ -109,13 +126,14 @@ class StateMap:
             return False
         try:
             text = open(self.path, encoding="utf-8").read()
-            rules, long_idle, awaiting, errors = parse_state_map(text, set(self.clips))
+            rules, tiers, long_idle, awaiting, errors = parse_state_map(text, set(self.clips))
         except Exception as e:                     # noqa: BLE001 - 坏文件保留上一版
             self._log("state-map 解析失败（保留上一版）: %s" % e)
             return False
         for e in errors:
             self._log(e)
-        self.rules, self.long_idle_sec, self.awaiting_user_sec = rules, long_idle, awaiting
+        self.rules, self.tiers, self.long_idle_sec, self.awaiting_user_sec = \
+            rules, tiers, long_idle, awaiting
         self._mtime = mtime
         self._log("state-map 载入: %d 条 longIdle=%ds awaitingUser=%ds"
                   % (len(rules), int(long_idle), int(awaiting)))
@@ -242,6 +260,15 @@ class StateMap:
 
         if self.state == "idle" and now - self._long_idle_at > self.long_idle_sec:
             self.set_state("long_idle", "空闲 %ds" % int(self.long_idle_sec))
+        if self.state == "long_idle":
+            # 分档：600s=累到瘫倒，1800s=打哈欠；换档时允许再播一次（清掉静默标记）
+            elapsed = now - self._long_idle_at
+            cand = [t for t in self.tiers.get("long_idle", []) if t[0] <= elapsed]
+            pick = max(cand, key=lambda t: t[0])[1] if cand else None
+            if pick is not None and self.rules.get("long_idle") is not pick:
+                self.rules["long_idle"] = pick
+                self.silenced, self._pending = False, None
+                self._dbg("long_idle 升档 %ds → %s" % (int(pick["afterSec"]), pick["clipId"]))
         if self.state == "done" and now - self._done_at > self.awaiting_user_sec:
             self.set_state("awaiting_user", "done 后 %ds 无输入" % int(self.awaiting_user_sec))
         if self.state == "needs_decision" and self.deadline_at and now > self.deadline_at:

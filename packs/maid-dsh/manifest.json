@@ -458,6 +458,186 @@
         "keep_frac": "0.05",
         "watermarks": "[]"
       }
+    },
+    {
+      "clipId": "dsh_handup",
+      "displayName": "举手提问",
+      "type": "action",
+      "loop": false,
+      "priority": 11,
+      "dir": "frames/dsh_handup",
+      "fps": 24,
+      "count": 96,
+      "scale": 1.0967,
+      "offset": [
+        27,
+        7
+      ],
+      "anchor": {
+        "foot": [
+          0.5,
+          0.9962
+        ]
+      },
+      "tags": [],
+      "crop": [
+        2,
+        2,
+        478,
+        478
+      ],
+      "format": "webp",
+      "source": "举手提问.mp4",
+      "keyer": {
+        "hue_ref": "136.0",
+        "hue_in": "18.0",
+        "hue_out": "34.0",
+        "sat_lo": "0.3",
+        "sat_hi": "0.55",
+        "floor": "0.16",
+        "despill": "0.75",
+        "blur": "1.0",
+        "val_lo": "0.3",
+        "val_hi": "0.45",
+        "erode": "1",
+        "watermarks": "[]",
+        "keep_frac": "0.05"
+      }
+    },
+    {
+      "clipId": "dsh_handover",
+      "displayName": "递交文件",
+      "type": "action",
+      "loop": false,
+      "priority": 12,
+      "dir": "frames/dsh_handover",
+      "fps": 24,
+      "count": 96,
+      "scale": 1.1107,
+      "offset": [
+        25,
+        6
+      ],
+      "anchor": {
+        "foot": [
+          0.5,
+          0.9962
+        ]
+      },
+      "tags": [],
+      "crop": [
+        2,
+        2,
+        478,
+        478
+      ],
+      "format": "webp",
+      "source": "递交文件.mp4",
+      "keyer": {
+        "hue_ref": "107.0",
+        "hue_in": "18.0",
+        "hue_out": "34.0",
+        "sat_lo": "0.12",
+        "sat_hi": "0.18",
+        "floor": "0.16",
+        "despill": "0.75",
+        "blur": "1.0",
+        "val_lo": "0.3",
+        "val_hi": "0.45",
+        "erode": "1",
+        "watermarks": "[]",
+        "keep_frac": "0.05"
+      }
+    },
+    {
+      "clipId": "dsh_cheer",
+      "displayName": "高兴跳起",
+      "type": "action",
+      "loop": false,
+      "priority": 13,
+      "dir": "frames/dsh_cheer",
+      "fps": 24,
+      "count": 96,
+      "scale": 1.0967,
+      "offset": [
+        27,
+        7
+      ],
+      "anchor": {
+        "foot": [
+          0.5,
+          0.9962
+        ]
+      },
+      "tags": [],
+      "crop": [
+        2,
+        2,
+        478,
+        478
+      ],
+      "format": "webp",
+      "source": "高兴跳起.mp4",
+      "keyer": {
+        "hue_ref": "136.0",
+        "hue_in": "18.0",
+        "hue_out": "34.0",
+        "sat_lo": "0.3",
+        "sat_hi": "0.55",
+        "floor": "0.16",
+        "despill": "0.75",
+        "blur": "1.0",
+        "val_lo": "0.3",
+        "val_hi": "0.45",
+        "erode": "1",
+        "watermarks": "[]",
+        "keep_frac": "0.05"
+      }
+    },
+    {
+      "clipId": "dsh_tired",
+      "displayName": "累到瘫倒",
+      "type": "action",
+      "loop": false,
+      "priority": 14,
+      "dir": "frames/dsh_tired",
+      "fps": 24,
+      "count": 96,
+      "scale": 1.0967,
+      "offset": [
+        27,
+        7
+      ],
+      "anchor": {
+        "foot": [
+          0.5,
+          0.9962
+        ]
+      },
+      "tags": [],
+      "crop": [
+        2,
+        2,
+        478,
+        478
+      ],
+      "format": "webp",
+      "source": "累到瘫倒.mp4",
+      "keyer": {
+        "hue_ref": "136.0",
+        "hue_in": "18.0",
+        "hue_out": "34.0",
+        "sat_lo": "0.3",
+        "sat_hi": "0.55",
+        "floor": "0.16",
+        "despill": "0.75",
+        "blur": "1.0",
+        "val_lo": "0.3",
+        "val_hi": "0.45",
+        "erode": "1",
+        "watermarks": "[]",
+        "keep_frac": "0.05"
+      }
     }
   ]
 }

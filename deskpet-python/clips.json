@@ -111,6 +111,46 @@
       "dir": "frames/dsh_shock",
       "fps": 24,
       "count": 124
+    },
+    {
+      "id": "dsh_handup",
+      "displayName": "举手提问",
+      "type": "action",
+      "loop": false,
+      "priority": 11,
+      "dir": "frames/dsh_handup",
+      "fps": 24,
+      "count": 96
+    },
+    {
+      "id": "dsh_handover",
+      "displayName": "递交文件",
+      "type": "action",
+      "loop": false,
+      "priority": 12,
+      "dir": "frames/dsh_handover",
+      "fps": 24,
+      "count": 96
+    },
+    {
+      "id": "dsh_cheer",
+      "displayName": "高兴跳起",
+      "type": "action",
+      "loop": false,
+      "priority": 13,
+      "dir": "frames/dsh_cheer",
+      "fps": 24,
+      "count": 96
+    },
+    {
+      "id": "dsh_tired",
+      "displayName": "累到瘫倒",
+      "type": "action",
+      "loop": false,
+      "priority": 14,
+      "dir": "frames/dsh_tired",
+      "fps": 24,
+      "count": 96
     }
   ]
 }

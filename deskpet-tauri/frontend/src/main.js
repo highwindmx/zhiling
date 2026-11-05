@@ -538,6 +538,7 @@ const STATE_LOG_MAX = 20;
 
 const stateLog = [];
 let rules = new Map();       // state -> rule
+let tiers = new Map();       // state -> [[afterSec, rule]]（long_idle 分档用）
 let longIdleSec = 600;
 let awaitingUserSec = 30;
 let stateCfgText = "";
@@ -567,18 +568,29 @@ function parseStateMap(text) {
   const raw = JSON.parse(text);
   const list = Array.isArray(raw.rules) ? raw.rules : [];
   const out = new Map();
+  const tierMap = new Map();   // state -> [[afterSec, rule]]（目前只有 long_idle 用）
   for (let i = 0; i < list.length; i++) {
     const r = list[i] || {};
     try {
       if (typeof r.state !== "string" || !STATES.includes(r.state)) {
         throw new Error(`未知状态 ${JSON.stringify(r.state)}`);
       }
-      if (!r.clipId || !CLIPS[r.clipId]) throw new Error(`clipId 不存在: ${r.clipId}`);
-      if (out.has(r.state)) throw new Error(`状态 ${r.state} 重复，只保留第一条`);
+      if (!r.clipId) throw new Error(`clipId 不存在: ${r.clipId}`);
+      // 主 clipId 缺失时依次试 fallbackClipIds（只影响可用性，不改状态语义）
+      const cids = [r.clipId, ...(Array.isArray(r.fallbackClipIds) ? r.fallbackClipIds : [])]
+        .filter((c) => typeof c === "string");
+      const pick = cids.find((c) => CLIPS[c]);
+      if (!pick) throw new Error(`clipId 不存在: ${r.clipId}（备用段也没有）`);
+      if (pick !== r.clipId) stateDbg(`rule#${i} 主 ${r.clipId} 不存在，回退到 ${pick}`);
+      if (out.has(r.state) && (r.state !== "long_idle" || num(r.afterSec, 0) <= 0)) {
+        throw new Error(`状态 ${r.state} 重复，只保留第一条`);
+      }
       const rp = r.repeat && typeof r.repeat === "object" ? r.repeat : null;
-      out.set(r.state, {
+      const rule = {
         state: r.state,
-        clipId: r.clipId,
+        clipId: pick,
+        preferredClipId: r.clipId,
+        afterSec: num(r.afterSec, 0),
         priority: num(r.priority, 20),
         minPlayMs: num(r.minPlayMs, 0),
         cooldownSec: num(r.cooldownSec, 0),
@@ -590,7 +602,14 @@ function parseStateMap(text) {
           intervalSec: num(rp.intervalSec, 75),
           maxTimes: Math.max(1, Math.floor(num(rp.maxTimes, 3))),
         } : null,
-      });
+      };
+      if (out.has(r.state)) {
+        if (!tierMap.has(r.state)) tierMap.set(r.state, [[out.get(r.state).afterSec, out.get(r.state)]]);
+        tierMap.get(r.state).push([rule.afterSec, rule]);
+        continue;
+      }
+      out.set(r.state, rule);
+      if (r.state === "long_idle") tierMap.set(r.state, [[rule.afterSec, rule]]);
     } catch (e) {
       // 只废这一条，其它规则照常生效
       stateDbg(`rule#${i} 无效: ${e.message}`);
@@ -598,6 +617,7 @@ function parseStateMap(text) {
   }
   return {
     rules: out,
+    tiers: tierMap,
     longIdleSec: num(raw.longIdleSec, 600),
     awaitingUserSec: num(raw.awaitingUserSec, 30),
   };
@@ -617,6 +637,7 @@ async function loadStateMap(reason) {
   try {
     const parsed = parseStateMap(text);
     rules = parsed.rules;
+    tiers = parsed.tiers;
     longIdleSec = parsed.longIdleSec;
     awaitingUserSec = parsed.awaitingUserSec;
     stateCfgText = text;
@@ -766,6 +787,19 @@ function stateTick() {
   const now = performance.now();
   if (curState === "idle" && now - longIdleAt > longIdleSec * 1000) {
     setState("long_idle", `空闲 ${longIdleSec}s`);
+  }
+  if (curState === "long_idle") {
+    // 分档：600s=累到瘫倒，1800s=打哈欠；换档时允许再播一次（清掉静默标记）
+    const elapsed = (now - longIdleAt) / 1000;
+    const ts = tiers.get("long_idle") || [];
+    const cand = ts.filter((t) => t[0] <= elapsed);
+    const pick = cand.length ? cand.reduce((a, b) => (b[0] >= a[0] ? b : a))[1] : null;
+    if (pick && rules.get("long_idle") !== pick) {
+      rules.set("long_idle", pick);
+      silenced = false;
+      reminderPending = false;
+      stateDbg(`long_idle 升档 ${Math.round(pick.afterSec)}s → ${pick.clipId}`);
+    }
   }
   if (curState === "done" && now - awaitingAt > awaitingUserSec * 1000) {
     setState("awaiting_user", `done 后 ${awaitingUserSec}s 无输入`);
