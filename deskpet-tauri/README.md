@@ -83,7 +83,7 @@ powershell -NoProfile -File build\bench-chart.ps1
 | ├ WebView2 utility（网络/存储等） | 91.6MB | — | |
 | ├ WebView2 crashpad-handler | 16.6MB | — | |
 | 待机 CPU（单核） | **8.9%** | 18.9% | mini 每帧重新解码 + 平滑缩放 |
-| 首帧（进程内自计时） | 1023ms | **156ms** | Tauri = WebView2 初始化 + 首帧解码 |
+| 首帧（进程内自计时） | 1023ms（同机多轮 0.67~1.99s 波动） | **156ms** | Tauri = WebView2 初始化 + 首帧解码 |
 | 首帧（spawn → 窗口可见） | 1087ms | 400ms | 外部 `EnumWindows` 轮询 |
 | 稳定性 | 60s 存活、无白底/黑屏/崩溃 | 同左 | 两端截图见下 |
 
@@ -127,7 +127,7 @@ powershell -NoProfile -File build\bench-chart.ps1
 - 未做点击穿透、未做多角色 / AI / 自动更新（本轮范围外）。
 - 待机内存受 WebView2 多进程基线影响，短期不会低于 ~450MB。
 - 只在 Windows 11 本机验证；macOS / Linux 未测。
-- 首帧 ~1s，比 mini 慢；如需更快可见，可把首帧改成内联 data URL 或先显示静态占位图（本轮未做）。
+- 首帧 ~1s（本机观测 0.67~1.99s，波动主要来自 WebView2 运行时初始化），比 mini 慢；如需更快可见，可把首帧改成内联 data URL 或先显示静态占位图（本轮未做）。
 
 ## 目录结构
 
