@@ -12,6 +12,17 @@ deskpet-mini/frames_idle/
 deskpet-mini/frames_action/
 **/frames_*/
 
+# Tauri 运行期素材目录（由 prepare_assets.py --assets 从 deskpet-mini 拷过来）
+deskpet-tauri/assets/
+# Tauri 前端暂存目录（编译期输入，产物 32KB）
+deskpet-tauri/frontend-dist/
+
+# 工坊/素材包：帧与 mp4 走 Release 附件，不进 git（manifest 与 state-map 例外）
+packs/*/frames/
+packs/*/source/
+packs/*/.backup/
+packs/*/posters/
+
 # build 目录下的抽帧中间产物（保留 .py 脚本）
 deskpet-mini/build/f24/
 deskpet-mini/build/action_raw/

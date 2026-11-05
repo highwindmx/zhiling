@@ -4,6 +4,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
@@ -28,6 +29,130 @@ fn log_line(msg: &str) {
 
 fn elapsed_ms() -> u128 {
     START.get_or_init(Instant::now).elapsed().as_millis()
+}
+
+// ---- 素材目录：运行时外置 --------------------------------------------------
+// 帧和 mp4 不打进 exe（以后要接不同素材系列，不能每换一套就重新编译）。启动时按
+// 下面的顺序找素材根目录：
+//   1. 环境变量 DESKPET_ASSETS（绝对路径，调试/多 pack 并存时用）
+//   2. exe 同级的 assets/（发布形态：exe + assets 一起分发）
+// 前端通过自定义协议 deskpet:// 读取（Windows 上映射成 http://deskpet.localhost/）。
+// 选自定义协议而不是内置 asset 协议的原因：asset 协议的 scope 必须写死在
+// tauri.conf.json 里（编译期就固定，运行时改不了），而这里素材目录要能换；自定义
+// 协议的路径校验放在下面的 serve_asset 里，只允许素材目录内的白名单后缀，
+// 因此 tauri.conf.json 不需要开任何 scope（详见 README「素材外置」）。
+static ASSET_ROOT: OnceLock<PathBuf> = OnceLock::new();
+
+fn asset_root() -> &'static PathBuf {
+    ASSET_ROOT.get_or_init(|| {
+        if let Ok(p) = std::env::var("DESKPET_ASSETS") {
+            if !p.trim().is_empty() {
+                return PathBuf::from(p);
+            }
+        }
+        let exe_dir = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(Path::to_path_buf))
+            .unwrap_or_else(|| PathBuf::from("."));
+        exe_dir.join("assets")
+    })
+}
+
+fn mime_of(path: &Path) -> &'static str {
+    match path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("json") => "application/json; charset=utf-8",
+        Some("webp") => "image/webp",
+        Some("png") => "image/png",
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("svg") => "image/svg+xml",
+        Some("mp4") => "video/mp4",
+        _ => "application/octet-stream",
+    }
+}
+
+fn asset_response(status: u16, mime: &'static str, body: Vec<u8>) -> tauri::http::Response<Vec<u8>> {
+    tauri::http::Response::builder()
+        .status(status)
+        .header("Content-Type", mime)
+        // 页面来自 http://tauri.localhost，跨到 http://deskpet.localhost 需要 CORS 头
+        .header("Access-Control-Allow-Origin", "*")
+        // 不允许缓存：用户改完 pack 里的帧/配置后，刷新即生效
+        .header("Cache-Control", "no-cache")
+        .body(body)
+        .unwrap_or_else(|_| tauri::http::Response::new(Vec::new()))
+}
+
+fn percent_decode(s: &str) -> Option<String> {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            if i + 2 >= bytes.len() {
+                return None;
+            }
+            let hex = std::str::from_utf8(&bytes[i + 1..i + 3]).ok()?;
+            out.push(u8::from_str_radix(hex, 16).ok()?);
+            i += 3;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8(out).ok()
+}
+
+/// 自定义协议处理器：把 `deskpet://.../frames_x/f0000.webp` 映射成素材目录里的文件。
+fn serve_asset(req: tauri::http::Request<Vec<u8>>) -> tauri::http::Response<Vec<u8>> {
+    let raw = req.uri().path().trim_start_matches('/');
+    let rel = match percent_decode(raw) {
+        Some(p) => p,
+        None => return asset_response(400, "text/plain; charset=utf-8", b"bad path".to_vec()),
+    };
+    // 只允许相对路径 + 白名单后缀，杜绝 ../ 跳出素材目录
+    if rel.is_empty() || rel.contains("..") || rel.starts_with('/') || rel.contains('\\') {
+        return asset_response(403, "text/plain; charset=utf-8", b"forbidden".to_vec());
+    }
+    let full = asset_root().join(&rel);
+    let ok_ext = matches!(
+        full.extension().and_then(|e| e.to_str()).map(|s| s.to_ascii_lowercase()),
+        Some(ref e) if matches!(e.as_str(), "json" | "webp" | "png" | "jpg" | "jpeg" | "svg" | "mp4")
+    );
+    if !ok_ext {
+        return asset_response(403, "text/plain; charset=utf-8", b"bad extension".to_vec());
+    }
+    match std::fs::read(&full) {
+        Ok(body) => asset_response(200, mime_of(&full), body),
+        Err(e) => {
+            log_line(&format!("asset_404 rel={} err={}", rel, e));
+            asset_response(404, "text/plain; charset=utf-8", format!("missing: {}", rel).into_bytes())
+        }
+    }
+}
+
+#[derive(serde::Serialize)]
+struct AssetsInfo {
+    root: String,
+    exists: bool,
+    clips: bool,
+    state_map: bool,
+}
+
+/// 前端启动时先问素材目录在哪：缺素材时用它给出明确的路径提示，而不是黑窗。
+#[tauri::command]
+fn assets_info() -> AssetsInfo {
+    let root = asset_root().clone();
+    AssetsInfo {
+        exists: root.is_dir(),
+        clips: root.join("clips.json").is_file(),
+        state_map: root.join("state-map.json").is_file(),
+        root: root.display().to_string(),
+    }
 }
 
 /// 第一帧画好后由前端调用；配置里 visible=false 是为了避免透明窗口白闪。
@@ -247,7 +372,15 @@ fn on_menu_event(app: &tauri::AppHandle, id: &str) {
 fn main() {
     START.get_or_init(Instant::now);
     log_line(&format!("app_start pid={}", std::process::id()));
+    let root = asset_root().clone();
+    log_line(&format!(
+        "assets_root={} exists={} clips={}",
+        root.display(),
+        root.is_dir(),
+        root.join("clips.json").is_file()
+    ));
     tauri::Builder::default()
+        .register_uri_scheme_protocol("deskpet", |_ctx, req| serve_asset(req))
         .invoke_handler(tauri::generate_handler![
             show_window,
             set_tier,
@@ -255,7 +388,8 @@ fn main() {
             log_event,
             quit_app,
             cursor_local,
-            set_click_through
+            set_click_through,
+            assets_info
         ])
         .on_menu_event(|app, event| on_menu_event(app, event.id().0.as_str()))
         .setup(|app| {

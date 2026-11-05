@@ -10,6 +10,13 @@ const FADE_MS = 250;     // 与 pet.py 的 FADE_MS 一致
 const PREFETCH = 8;      // 向前预取帧数（pet.py 同值）
 const KEEP = 256;        // 上限；正常情况下按片段整体保留，切换片段时释放旧片段
 const PRELOAD_CONCURRENCY = 4;
+// 素材在 exe 同级的 assets/ 目录里（运行时读盘，不进 exe）。用自定义协议 deskpet://
+// 而不是 file://：WebView2 默认拦 file:// 请求。Windows 上 Tauri 会把它映射成
+// http://deskpet.localhost/<path>；macOS/Linux 是 deskpet://localhost/<path>。
+const ASSET_BASE = (location.protocol === "http:" || location.protocol === "https:")
+  ? `${location.protocol}//deskpet.localhost/`
+  : "deskpet://localhost/";
+const assetUrl = (rel) => ASSET_BASE + rel;
 const TIERS = [
   { name: "小", ratio: 0.10 },
   { name: "中", ratio: 0.15 },
@@ -53,24 +60,52 @@ function logEvent(msg) {
 }
 
 // ---- 帧清单 --------------------------------------------------------------
+// clips.json（顺序/类型/名字/defaultIdle）+ meta.json（目录/帧数/fps/格式/画布）
+// 与 deskpet-mini 读的是同一份文件，字段语义完全一致，只是这里多了一步合并。
+async function fetchJson(rel) {
+  const res = await fetch(assetUrl(rel), { cache: "no-store" });
+  if (!res.ok) throw new Error(`${rel} HTTP ${res.status}（${assetUrl(rel)}）`);
+  return res.json();
+}
+
 async function loadClips() {
-  const res = await fetch("assets/clips.json", { cache: "no-store" });
-  if (!res.ok) throw new Error("clips.json HTTP " + res.status);
-  const raw = await res.json();
-  CLIPS = raw.clips || {};
-  if (raw.canvas && raw.canvas.length === 2) {
-    CANVAS = [raw.canvas[0], raw.canvas[1]];
+  const raw = await fetchJson("clips.json");
+  const meta = await fetchJson("meta.json");
+  const metaClips = meta.clips || {};
+  const list = Array.isArray(raw.clips) ? raw.clips : Object.values(raw.clips || {});
+  CLIPS = {};
+  for (const e of list) {
+    const id = e && e.id;
+    if (!id) continue;
+    const m = metaClips[id] || {};
+    CLIPS[id] = {
+      id,
+      dir: m.dir || e.dir || `frames_${id}`,
+      fps: m.fps ?? 24,
+      count: m.count ?? 1,
+      format: m.format || "webp",
+      name: e.name || id,
+      type: e.type || "action",
+      loop: !!e.loop,
+      priority: e.priority ?? 99,
+    };
+  }
+  if (meta.canvas && meta.canvas.w && meta.canvas.h) {
+    CANVAS = [meta.canvas.w, meta.canvas.h];
   }
   const ids = Object.keys(CLIPS);
-  IDLE_ID = ids.find((k) => CLIPS[k].type === "idle") || ids[0];
-  ACTIONS = ids.filter((k) => CLIPS[k].type !== "idle")
+  // defaultIdle 显式指定默认待机（旧 idle 可以降级成普通动作）；没有就退回第一个 type=idle
+  IDLE_ID = (raw.defaultIdle && CLIPS[raw.defaultIdle])
+    ? raw.defaultIdle
+    : (ids.find((k) => CLIPS[k].type === "idle") || ids[0]);
+  ACTIONS = ids.filter((k) => k !== IDLE_ID)
     .sort((a, b) => (CLIPS[a].priority ?? 99) - (CLIPS[b].priority ?? 99));
-  if (!IDLE_ID) throw new Error("clips.json 里没有 idle 段");
+  if (!IDLE_ID) throw new Error("clips.json 里没有可用的待机段");
 }
 
 function frameUrl(id, idx) {
   const c = CLIPS[id];
-  return `assets/${c.dir}/f${String(idx).padStart(4, "0")}.${c.format || "webp"}`;
+  return assetUrl(`${c.dir}/f${String(idx).padStart(4, "0")}.${c.format || "webp"}`);
 }
 
 // ---- 位图缓存 ------------------------------------------------------------
@@ -296,7 +331,7 @@ let idleResumeAt = 0;      // 动作结束后待机从哪一帧续播
 let dblCursor = 0;
 let switchToken = 0;
 
-async function startClip(id, { isIdle = false, resumeFrom = 0 } = {}) {
+async function startClip(id, { isIdle = false, resumeFrom = 0, loop = false, onEnd = null } = {}) {
   const c = CLIPS[id];
   if (!c) return;
   if (!isIdle && state && state.isIdle) {
@@ -311,9 +346,9 @@ async function startClip(id, { isIdle = false, resumeFrom = 0 } = {}) {
     if (token !== switchToken) return; // 被更新的切换取代
     crossFade(bmp);
     updateMask(id, idx, bmp, true);
-    logEvent(`clip_start id=${id} idle=${isIdle} idx=${idx}`);
+    logEvent(`clip_start id=${id} idle=${isIdle} idx=${idx} loop=${loop}`);
     state = {
-      id, idx, isIdle,
+      id, idx, isIdle, loop, onEnd,
       fps: c.fps || 24,
       next: performance.now() + 1000 / (c.fps || 24),
     };
@@ -325,7 +360,7 @@ async function startClip(id, { isIdle = false, resumeFrom = 0 } = {}) {
 }
 
 function startIdle() {
-  startClip(IDLE_ID, { isIdle: true, resumeFrom: idleResumeAt });
+  startClip(IDLE_ID, { isIdle: true, resumeFrom: idleResumeAt, loop: true });
 }
 
 function playAction(id) {
@@ -340,11 +375,12 @@ function loop(now) {
   const interval = 1000 / s.fps;
   if (now >= s.next) {
     const n = CLIPS[s.id].count;
-    if (s.idx + 1 >= n && !s.isIdle) {
-      // 动作播完：先摘掉状态并停掉本轮 rAF，避免异步切段期间重复触发
+    if (s.idx + 1 >= n && !s.loop) {
+      // 非循环段播完：先摘掉状态并停掉本轮 rAF，避免异步切段期间重复触发
       state = null;
       raf = 0;
-      startIdle();
+      if (typeof s.onEnd === "function") s.onEnd();
+      else startIdle();
       return;
     }
     const nextIdx = (s.idx + 1) % n;
@@ -445,7 +481,7 @@ let dragging = false;
 
 window.addEventListener("pointerdown", (e) => {
   if (e.button !== 0) return;
-  down = { x: e.screenX, y: e.screenY };
+  down = { x: e.screenX, y: e.screenY, t: performance.now() };
   dragging = false;
 });
 window.addEventListener("pointermove", (e) => {
@@ -455,13 +491,306 @@ window.addEventListener("pointermove", (e) => {
   down = null;
   startNativeDrag().finally(() => { dragging = false; });
 });
-window.addEventListener("pointerup", () => { down = null; });
-window.addEventListener("dblclick", () => { logEvent("dblclick"); playNextAction(); });
+window.addEventListener("pointerup", () => {
+  const d = down;
+  down = null;
+  // 单击（不是拖动的松开）算一个可观测状态，交给状态映射决定播什么
+  if (d && !dragging && performance.now() - d.t < 400) {
+    clearReminder("单击");
+    setState("click", "单击");
+  }
+});
+window.addEventListener("dblclick", () => {
+  logEvent("dblclick");
+  clearReminder("双击");
+  // 有 double_click 规则就走状态映射（默认给炸毛）；没有就退回旧的"依次轮播动作"
+  if (rules.has("double_click")) setState("double_click", "双击");
+  else playNextAction();
+});
+// 右键（菜单）也是"用户在响应"，要清掉提醒态
+window.addEventListener("contextmenu", () => clearReminder("右键"));
 
 // ---- 键盘 ----------------------------------------------------------------
 window.addEventListener("keydown", (e) => {
   if (e.key === "Escape") quitApp();
 });
+
+// ---- 状态映射 --------------------------------------------------------------
+// 配置：assets/state-map.json（源文件 repo 的 packs/<packId>/state-map.json）。
+// 与 deskpet-mini/state_map.py 同一套语义：每个可观测状态 → 一个 clip，
+// 播放前过 冷却 / 占用（busy|hold）/ 禁用 三道闸；priority 用 0~100 口径。
+// 两个提醒态（awaiting_user / needs_decision）额外支持 repeat：
+//   once     —— 只播一次，之后静默回待机（不常驻循环）
+//   interval —— 每隔 intervalSec 再播一次，最多 maxTimes 次
+const STATES = ["idle", "long_idle", "awaiting_user", "busy", "streaming",
+                "done", "needs_decision", "error", "click", "double_click"];
+const STATE_LOG_MAX = 20;
+
+const stateLog = [];
+let rules = new Map();       // state -> rule
+let longIdleSec = 600;
+let awaitingUserSec = 30;
+let stateCfgText = "";
+let curState = null;
+let longIdleAt = 0;          // 进入 idle 的时刻（用于 long_idle / awaiting_user）
+let awaitingAt = 0;          // 进入 done 的时刻（用于 awaiting_user）
+let cur = null;              // 当前占用：{clipId, priority, holdUntil, interruptible}
+let silenced = false;        // 当前状态已经"不再播"（once 播完 / 次数用尽 / 超时）
+let reminders = 0;           // 提醒态已重复次数
+let deadlineAt = 0;          // 提醒态超时时刻（0=没有）
+const lastPlay = new Map();  // clipId -> 上次开始播放的时刻
+
+function stateDbg(msg) {
+  const line = `${msg} | state=${curState || "-"} cur=${cur ? cur.clipId : "-"}`;
+  stateLog.push(line);
+  if (stateLog.length > STATE_LOG_MAX) stateLog.shift();
+  logEvent(`state ${line}`);
+}
+
+function num(v, dflt) {
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? n : dflt;
+}
+
+function parseStateMap(text) {
+  const raw = JSON.parse(text);
+  const list = Array.isArray(raw.rules) ? raw.rules : [];
+  const out = new Map();
+  for (let i = 0; i < list.length; i++) {
+    const r = list[i] || {};
+    try {
+      if (typeof r.state !== "string" || !STATES.includes(r.state)) {
+        throw new Error(`未知状态 ${JSON.stringify(r.state)}`);
+      }
+      if (!r.clipId || !CLIPS[r.clipId]) throw new Error(`clipId 不存在: ${r.clipId}`);
+      if (out.has(r.state)) throw new Error(`状态 ${r.state} 重复，只保留第一条`);
+      const rp = r.repeat && typeof r.repeat === "object" ? r.repeat : null;
+      out.set(r.state, {
+        state: r.state,
+        clipId: r.clipId,
+        priority: num(r.priority, 20),
+        minPlayMs: num(r.minPlayMs, 0),
+        cooldownSec: num(r.cooldownSec, 0),
+        loop: !!r.loop,
+        interruptible: r.interruptible !== false,
+        enabled: r.enabled !== false,
+        repeat: rp ? {
+          mode: rp.mode === "interval" ? "interval" : "once",
+          intervalSec: num(rp.intervalSec, 75),
+          maxTimes: Math.max(1, Math.floor(num(rp.maxTimes, 3))),
+        } : null,
+      });
+    } catch (e) {
+      // 只废这一条，其它规则照常生效
+      stateDbg(`rule#${i} 无效: ${e.message}`);
+    }
+  }
+  return {
+    rules: out,
+    longIdleSec: num(raw.longIdleSec, 600),
+    awaitingUserSec: num(raw.awaitingUserSec, 30),
+  };
+}
+
+async function loadStateMap(reason) {
+  let text;
+  try {
+    const res = await fetch(assetUrl("state-map.json"), { cache: "no-store" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    text = await res.text();
+  } catch (e) {
+    if (!stateCfgText) stateDbg(`state-map 缺失: ${e.message}（用内置默认）`);
+    return false;
+  }
+  if (text === stateCfgText) return false;
+  try {
+    const parsed = parseStateMap(text);
+    rules = parsed.rules;
+    longIdleSec = parsed.longIdleSec;
+    awaitingUserSec = parsed.awaitingUserSec;
+    stateCfgText = text;
+    stateDbg(`state-map 载入 ${reason}: ${rules.size} 条 longIdle=${longIdleSec}s `
+      + `awaitingUser=${awaitingUserSec}s`);
+    return true;
+  } catch (e) {
+    stateDbg(`state-map 解析失败（保留上一版）: ${e.message}`);
+    return false;
+  }
+}
+
+function rejectPlay(rule, source, why) {
+  stateDbg(`拒绝 ${source}→${rule.clipId}：${why}`);
+  return false;
+}
+
+function requestPlay(rule, source) {
+  if (!rule.enabled) return rejectPlay(rule, source, "disabled");
+  const now = performance.now();
+  const last = lastPlay.has(rule.clipId) ? lastPlay.get(rule.clipId) : -1e12;
+  if (now < last + rule.cooldownSec * 1000) {
+    return rejectPlay(rule, source,
+      `cooldown 剩余 ${((last + rule.cooldownSec * 1000 - now) / 1000).toFixed(1)}s`);
+  }
+  if (cur && now < cur.holdUntil) {
+    if (!cur.interruptible) return rejectPlay(rule, source, `hold:${cur.clipId}`);
+    if (rule.priority <= cur.priority) return rejectPlay(rule, source, `busy:${cur.clipId}`);
+  }
+  const c = CLIPS[rule.clipId];
+  const durMs = (c.count / (c.fps || 24)) * 1000;
+  lastPlay.set(rule.clipId, now);
+  cur = {
+    clipId: rule.clipId, priority: rule.priority,
+    holdUntil: now + Math.max(durMs, rule.minPlayMs),
+    interruptible: rule.interruptible,
+  };
+  stateDbg(`命中 ${source}→${rule.clipId}（${c.name}）prio=${rule.priority} loop=${rule.loop}`);
+  startClip(rule.clipId, {
+    isIdle: rule.clipId === IDLE_ID,
+    loop: rule.loop,
+    onEnd: () => {
+      cur = null;
+      onStateClipEnd(rule, source);
+    },
+  });
+  return true;
+}
+
+/// 一个状态段播完之后去哪：普通状态回 idle；提醒态按 repeat 决定再播还是静默。
+function onStateClipEnd(rule, source) {
+  const rp = rule.repeat;
+  if (!rp || rule.loop) {
+    if (curState !== "idle") setState("idle", "clip-end");
+    return;
+  }
+  if (rp.mode === "interval" && reminders + 1 < rp.maxTimes
+      && (deadlineAt === 0 || performance.now() < deadlineAt)) {
+    reminders += 1;
+    startIdle();                       // 间隔期先回到低干扰的待机画面
+    setTimeout(() => {
+      if (curState === source && !silenced) requestPlay(rule, source + ":reminder");
+    }, rp.intervalSec * 1000);
+    stateDbg(`提醒 ${source} 第 ${reminders + 1}/${rp.maxTimes} 次，${rp.intervalSec}s 后`);
+    return;
+  }
+  // once 或次数用尽：不再播，静默待机（状态本身还没退出，等外部事件）
+  silenced = true;
+  stateDbg(`${source} 提醒结束（${rp.mode}），转为静默待机`);
+  startIdle();
+}
+
+function setState(name, why = "") {
+  if (!STATES.includes(name)) return;
+  if (name === curState) return;
+  const prev = curState;
+  curState = name;
+  silenced = false;
+  reminders = 0;
+  deadlineAt = 0;
+  const now = performance.now();
+  if (name === "idle") longIdleAt = now;
+  if (name === "done") awaitingAt = now;
+  if (name === "needs_decision") {
+    deadlineAt = now + (num(needsDecisionTimeoutSec, 300) * 1000);
+  }
+  stateDbg(`切换 ${name}（${why}${prev ? "，来自 " + prev : ""}）`);
+  const rule = rules.get(name);
+  if (!rule) {
+    stateDbg(`${name} 没有规则 → 保持当前画面`);
+    return;
+  }
+  // 已经在这个画面（启动时先画了首帧）就别从第 0 帧重开，避免开屏闪一下
+  if (name === "idle" && state && state.id === rule.clipId) {
+    const c = CLIPS[rule.clipId];
+    cur = { clipId: rule.clipId, priority: rule.priority,
+            holdUntil: now + (c.count / (c.fps || 24)) * 1000,
+            interruptible: rule.interruptible };
+    stateDbg(`已在播 ${rule.clipId}，续播`);
+    return;
+  }
+  requestPlay(rule, name);
+}
+
+// 外部事件入口（DSH 桥接层调用）：
+//   done / busy / streaming / error / attention —— 状态事件
+//   user_input —— 用户开始输入（会清掉两个提醒态）
+// needs_decision 需要 DSH 补 attention 事件，见 docs/material-packs.md §状态事件
+// 调试：控制台里 __deskpetLog() 看最近 20 条"状态 → 命中哪条 → 被谁拒"
+window.__deskpetLog = () => stateLog.slice();
+window.__deskpetState = (name, extra) => {
+  if (name === "attention") {
+    needsDecisionTimeoutSec = extra && extra.timeoutSec;
+    setState("needs_decision", "attention:" + ((extra && extra.kind) || "?"));
+    return;
+  }
+  if (name === "user_input") {
+    onUserInput();
+    return;
+  }
+  setState(name, "external");
+};
+
+let needsDecisionTimeoutSec = 0;
+
+function onUserInput() {
+  if (curState === "awaiting_user" || curState === "needs_decision") {
+    stateDbg(`用户有输入 → 清除提醒（原状态 ${curState}）`);
+    setState("busy", "user_input");
+  }
+}
+
+// 手动操作（单击/双击/右键）＝用户在响应，提醒态立即退场（不必等 DSH 的 user_input）
+function clearReminder(why) {
+  if (curState === "awaiting_user" || curState === "needs_decision") {
+    stateDbg(`手动操作（${why}）→ 清除提醒（原状态 ${curState}）`);
+    setState("idle", "manual-clear");
+  }
+}
+
+// 每秒一次的派生状态维护：长待机、awaiting_user、超时、以及"状态与画面不同步"的补齐
+function stateTick() {
+  const now = performance.now();
+  if (curState === "idle" && now - longIdleAt > longIdleSec * 1000) {
+    setState("long_idle", `空闲 ${longIdleSec}s`);
+  }
+  if (curState === "done" && now - awaitingAt > awaitingUserSec * 1000) {
+    setState("awaiting_user", `done 后 ${awaitingUserSec}s 无输入`);
+  }
+  if (curState === "needs_decision" && deadlineAt && now > deadlineAt) {
+    stateDbg("needs_decision 超时 → 降级为 idle");
+    setState("idle", "decision-timeout");
+    return;
+  }
+  // 画面补齐：目标状态的 clip 没在播、且当前没有占用 → 重试（比如被冷却/占用拒过一次）
+  if (!silenced && curState) {
+    const rule = rules.get(curState);
+    if (rule && !(state && state.id === rule.clipId) && !(cur && now < cur.holdUntil)) {
+      requestPlay(rule, curState + ":reconcile");
+    }
+  }
+}
+
+async function startStateMap() {
+  await loadStateMap("启动");
+  if (!rules.has("idle")) {
+    // 配置缺失/坏了时的兜底：至少待机照旧，不让窗口空着
+    rules.set("idle", { state: "idle", clipId: IDLE_ID, priority: 0, minPlayMs: 0,
+                        cooldownSec: 0, loop: true, interruptible: true,
+                        enabled: true, repeat: null });
+  }
+  curState = null;
+  setState("idle", "启动");
+  setInterval(loadStateMap, 1000);   // 热加载：内容没变就什么都不做
+  setInterval(stateTick, 1000);
+}
+
+function showHint(title, detail) {
+  const el = document.getElementById("hint");
+  if (!el) return;
+  el.style.display = "block";
+  el.innerHTML = `<b>${title}</b><br><br>素材目录：<br><code>${detail}</code><br><br>`
+    + `把 <code>assets</code> 目录放到 exe 同级，或设置环境变量 `
+    + `<code>DESKPET_ASSETS</code> 指向素材目录。`;
+}
 
 // ---- 启动 ----------------------------------------------------------------
 // 调试钩子（仅用于测量/排障，不影响正常逻辑）
@@ -480,6 +809,14 @@ window.__deskpetDebug = {
 
 (async () => {
   try {
+    const info = await invoke("assets_info");
+    if (info && (!info.exists || !info.clips)) {
+      showHint("找不到素材目录", info.root);
+      // 默认窗口只有 192x177 逻辑像素，红框里的补救说明放不下：临时放大到 460x300
+      try { await invoke("set_tier", { width: 460, height: 300, reposition: true }); } catch (_) { /* ignore */ }
+      await showWindow();
+      return;
+    }
     await loadClips();
     await applyTier(DEFAULT_TIER, { reposition: true });
     sizeCanvases();
@@ -493,9 +830,12 @@ window.__deskpetDebug = {
     state = { id: IDLE_ID, idx: 0, isIdle: true, fps: CLIPS[IDLE_ID].fps || 24,
               next: performance.now() + 1000 / (CLIPS[IDLE_ID].fps || 24) };
     prefetch(IDLE_ID, 0);
+    // 素材目录已就绪，顺便把状态映射配置读进来（热加载，见 §state-map）
+    startStateMap();
     raf = requestAnimationFrame(loop);
   } catch (e) {
     console.error("素材加载失败", e);
+    showHint("素材加载失败", String(e && e.message ? e.message : e));
     await showWindow();
   }
 })();

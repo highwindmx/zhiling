@@ -26,6 +26,18 @@
     }
     #layerA { opacity: 1; z-index: 1; }
     #layerB { opacity: 0; z-index: 2; }
+
+    /* 素材缺失时的显式报错面板：宁可挡着看，也不能留一个黑窗让人猜 */
+    #hint {
+      position: fixed; inset: 0; z-index: 3; display: none;
+      padding: 8px; overflow: auto;
+      background: rgba(24, 20, 20, 0.94);
+      border: 1px solid #a33; border-radius: 6px;
+      color: #ffdede; font-size: 11px; line-height: 1.45;
+      -webkit-user-select: text; user-select: text;
+    }
+    #hint b { color: #fff; }
+    #hint code { color: #ffd479; word-break: break-all; }
   </style>
 </head>
 <body>
@@ -33,6 +45,7 @@
     <canvas id="layerA" class="layer"></canvas>
     <canvas id="layerB" class="layer"></canvas>
   </div>
+  <div id="hint"></div>
   <script type="module" src="./src/main.js"></script>
 </body>
 </html>

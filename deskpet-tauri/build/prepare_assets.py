@@ -1,19 +1,22 @@
 #!/usr/bin/env python3
-"""把 deskpet-mini 的 frames_* 帧序列同步到 frontend/assets/，并生成 clips.json。
+"""deskpet-tauri 的两件事：编译期暂存前端、运行期准备素材目录（素材不进 exe）。
 
-Tauri 的前端资源会被整个内嵌进 exe，运行时读不到 ../deskpet-mini/，所以这里在
-构建前做一次同步。这样两版用的是同一批 WebP q80 帧（576x530），体积/内存/画质
-对比才是同口径的。
+- 前端暂存（--frontend）：把 frontend/index.html + frontend/src 复制到 frontend-dist/。
+  这是 tauri.conf.json 的 frontendDist，会被编译进 exe（只有几十 KB 的 HTML/JS）。
+  这一步是编译前必须的，因为它就是 exe 里的页面本体。
+- 素材准备（--assets）：把 deskpet-mini 的 clips.json / meta.json / frames_* 复制到
+  deskpet-tauri/assets/。这一步**不是**编译前必须的：exe 运行时按
+  DESKPET_ASSETS 或「exe 同级的 assets/」读盘，换素材不用重新编译。
 
-为什么不用 deskpet-mini/clips.json 的名字：那份配置里的显示名是旧的
-（action=挥手、action2=打字、action3=抱臂），但底层素材实际是
-真开心 / 工作中 / 不高兴。本脚本沿用 mini 的 meta.json（目录、帧数、fps、画布）
-和 priority 顺序，只把显示名改成与实际动作一致的叫法。
+clips.json 与 meta.json 原样复制（不重命名、不合并），保证 mini 与 tauri 读到的字段
+语义完全一致；打包发行时 assets/ 就是素材目录本身（见 docs/material-packs.md）。
 
 用法：
-    python build/prepare_assets.py
-需要 deskpet-mini/frames_idle|action|action2|action3 已生成。
+    python build/prepare_assets.py             # 前端 + 素材都做（素材缺帧只警告）
+    python build/prepare_assets.py --frontend  # 只暂存前端（编译前必须）
+    python build/prepare_assets.py --assets    # 只准备素材（缺帧直接报错）
 """
+import argparse
 import json
 import os
 import shutil
@@ -23,63 +26,89 @@ PROJECT = os.path.dirname(HERE)
 ROOT = os.path.dirname(PROJECT)
 MINI = os.path.join(ROOT, "deskpet-mini")
 SRC_FRONTEND = os.path.join(PROJECT, "frontend")
-DIST = os.path.join(PROJECT, "frontend-dist")      # tauri.conf.json 的 frontendDist
-DST = os.path.join(DIST, "assets")
-
-# id 与 mini 的 frames 目录一一对应；name/priority 以实际动作为准。
-CLIPS = [
-    {"id": "idle", "dir": "frames_idle", "name": "待机", "type": "idle", "loop": True, "priority": 0},
-    {"id": "action", "dir": "frames_action", "name": "真开心", "type": "action", "loop": False, "priority": 1},
-    {"id": "action2", "dir": "frames_action2", "name": "工作中", "type": "action", "loop": False, "priority": 2},
-    {"id": "action3", "dir": "frames_action3", "name": "不高兴", "type": "action", "loop": False, "priority": 3},
-]
+DIST = os.path.join(PROJECT, "frontend-dist")        # tauri.conf.json 的 frontendDist
+ASSETS = os.path.join(PROJECT, "assets")             # exe 同级的运行期素材目录
+STATE_MAP_SRC = os.path.join(ROOT, "packs", "dsh", "state-map.json")
 
 
-def main():
-    with open(os.path.join(MINI, "meta.json"), encoding="utf-8") as f:
-        meta = json.load(f)
-    canvas = [meta["canvas"]["w"], meta["canvas"]["h"]]
-
-    # 手写前端（index.html + src/）原样复制到暂存目录，避免把 frontend/assets
-    # 里遗留的旧素材一起内嵌进 exe。
+def stage_frontend():
     if os.path.isdir(DIST):
         shutil.rmtree(DIST)
     os.makedirs(DIST, exist_ok=True)
     shutil.copy2(os.path.join(SRC_FRONTEND, "index.html"), DIST)
     shutil.copytree(os.path.join(SRC_FRONTEND, "src"), os.path.join(DIST, "src"))
+    size = sum(os.path.getsize(os.path.join(b, f))
+               for b, _d, fs in os.walk(DIST) for f in fs)
+    print(f"frontend-dist: {size/1e3:.1f} KB（会打进 exe）")
+    return True
 
-    os.makedirs(DST, exist_ok=True)
-    out = {"canvas": canvas, "clips": {}}
+
+def prepare_assets(strict):
+    meta_path = os.path.join(MINI, "meta.json")
+    clips_path = os.path.join(MINI, "clips.json")
+    for p in (meta_path, clips_path):
+        if not os.path.exists(p):
+            msg = f"缺少 {p}"
+            if strict:
+                raise SystemExit(msg)
+            print(f"[警告] {msg}，跳过素材准备（exe 运行时会要求 assets/ 存在）")
+            return False
+
+    meta = json.load(open(meta_path, encoding="utf-8"))
+    meta_clips = meta.get("clips", {})
+    clips = json.load(open(clips_path, encoding="utf-8"))
+    ids = [c["id"] for c in clips.get("clips", []) if c.get("id")]
+
+    if os.path.isdir(ASSETS):
+        shutil.rmtree(ASSETS)
+    os.makedirs(ASSETS, exist_ok=True)
+    shutil.copy2(clips_path, os.path.join(ASSETS, "clips.json"))
+    shutil.copy2(meta_path, os.path.join(ASSETS, "meta.json"))
+
     total = 0
-    for spec in CLIPS:
-        src = os.path.join(MINI, spec["dir"])
+    missing = []
+    for cid in ids:
+        d = meta_clips.get(cid, {}).get("dir", "frames_" + cid)
+        src = os.path.join(MINI, d)
         if not os.path.isdir(src):
-            raise SystemExit(f"找不到 mini 帧目录：{src}\n请先在 deskpet-mini 里生成 frames_*")
-        dst = os.path.join(DST, spec["dir"])
-        if os.path.isdir(dst):
-            shutil.rmtree(dst)
+            missing.append(cid)
+            continue
+        dst = os.path.join(ASSETS, d)
         shutil.copytree(src, dst)
-        files = [n for n in os.listdir(dst) if n.startswith("f") and n.endswith(".webp")]
-        count = len(files)
-        size = sum(os.path.getsize(os.path.join(dst, n)) for n in files)
+        size = sum(os.path.getsize(os.path.join(b, f))
+                   for b, _dd, fs in os.walk(dst) for f in fs)
         total += size
-        m = meta["clips"][spec["id"]]
-        out["clips"][spec["id"]] = {
-            "dir": spec["dir"],
-            "fps": m.get("fps", 24),
-            "count": count,
-            "format": "webp",
-            "name": spec["name"],
-            "type": spec["type"],
-            "loop": spec["loop"],
-            "priority": spec["priority"],
-        }
-        print(f"{spec['id']:8s} {spec['name']:4s} {count:4d} frames {size/1e6:6.2f} MB -> {dst}")
+        print(f"{cid:14s} -> {d:22s} {size/1e6:6.2f} MB")
 
-    with open(os.path.join(DST, "clips.json"), "w", encoding="utf-8") as f:
-        json.dump(out, f, ensure_ascii=False, indent=2)
-    print(f"canvas={canvas[0]}x{canvas[1]}  total={total/1e6:.2f} MB")
-    print(f"wrote {os.path.join(DST, 'clips.json')}")
+    if os.path.exists(STATE_MAP_SRC):
+        shutil.copy2(STATE_MAP_SRC, os.path.join(ASSETS, "state-map.json"))
+        print(f"state-map.json <- {os.path.relpath(STATE_MAP_SRC, ROOT)}")
+    else:
+        print(f"[警告] 没有 {os.path.relpath(STATE_MAP_SRC, ROOT)}，运行时将用内置默认待机")
+
+    print(f"assets: {len(ids) - len(missing)}/{len(ids)} 段，合计 {total/1e6:.1f} MB -> {ASSETS}")
+    if missing:
+        msg = "以下 clip 没有帧目录（先跑 deskpet-mini/build/build_*.py）：" + ", ".join(missing)
+        if strict:
+            raise SystemExit(msg)
+        print("[警告] " + msg)
+    if meta.get("canvas"):
+        print(f"canvas={meta['canvas']['w']}x{meta['canvas']['h']}")
+    return True
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--frontend", action="store_true", help="只暂存前端")
+    ap.add_argument("--assets", action="store_true", help="只准备素材")
+    args = ap.parse_args()
+    only_frontend = args.frontend and not args.assets
+    only_assets = args.assets and not args.frontend
+    if not only_assets:
+        if not stage_frontend():
+            raise SystemExit(1)
+    if not only_frontend:
+        prepare_assets(strict=only_assets)
 
 
 if __name__ == "__main__":

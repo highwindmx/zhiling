@@ -323,6 +323,8 @@ def bench_tauri(seconds):
         os.remove(TAURI_LOG)
     env = dict(os.environ)
     env["DESKPET_LOG"] = TAURI_LOG
+    # 素材外置：exe 在 %TEMP%，素材在 deskpet-tauri\assets，用环境变量指过去
+    env.setdefault("DESKPET_ASSETS", os.path.join(PROJECT, "assets"))
     t_spawn = time.time()
     proc = subprocess.Popen([exe], env=env)
     first_line, first_self = wait_for_line(TAURI_LOG, "first_show_ms", t0=t_spawn)
@@ -392,11 +394,17 @@ def sizes():
     wv = [p for p in wv if os.path.isdir(p) and os.path.basename(p)[0].isdigit()]
     out["webview2_mb"] = round(dir_size(wv[-1]) / 1e6, 1) if wv else None
 
+    assets = os.path.join(PROJECT, "assets")
+    out["tauri_assets_mb"] = round(dir_size(assets) / 1e6, 1) if os.path.isdir(assets) else 0.0
+    out["tauri_total_mb"] = round(out["tauri_exe_mb"] + out["tauri_assets_mb"], 1)
+
     own = [os.path.join(MINI, f) for f in
            ("pet.py", "clips.json", "meta.json", "requirements.txt")]
     own += [os.path.join(MINI, d) for d in
             ("frames_idle", "frames_action", "frames_action2", "frames_action3")]
     out["mini_own_mb"] = round(sum(tree_size(p) for p in own) / 1e6, 1)
+    out["mini_frames_all_mb"] = round(sum(
+        tree_size(p) for p in glob.glob(os.path.join(MINI, "frames_*"))) / 1e6, 1)
     qt = 0
     for p in glob.glob(os.path.join(MINI, ".venv", "Lib", "site-packages", "*")):
         b = os.path.basename(p).lower()
