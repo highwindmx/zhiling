@@ -12,7 +12,7 @@ import build_frames
 import workshop
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-OUT = os.path.join(BASE, "_accept_out")
+OUT = os.path.join(BASE, "..", "cache", "tmp", "_accept_out")
 CASES = [("得意状", "accept_proud"), ("炸毛", "accept_shock")]
 
 
@@ -42,7 +42,7 @@ def run(name, cid):
         print("跳过 %s：找不到 %s" % (name, src))
         return
     t_all = time.monotonic()
-    probe = os.path.join(BASE, "probe_" + cid)
+    probe = os.path.join(BASE, "..", "cache", "probe", cid)
     for f in glob.glob(os.path.join(probe, "*.png")):
         os.remove(f)
     t0 = time.monotonic()

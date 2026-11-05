@@ -13,8 +13,8 @@ from scipy import ndimage
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from keyer import key_frame
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PROBE = os.path.join(ROOT, "build", "_probe2")
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+PROBE = os.path.join(ROOT, "build", "cache", "probe")
 REPORT = json.load(open(os.path.join(PROBE, "report.json"), encoding="utf-8"))
 
 # 段 id -> 素材名（顺序与 analyze_pack 的文件排序一致，用报告里的 crop 复用）

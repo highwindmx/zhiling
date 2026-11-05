@@ -6,7 +6,7 @@ from PIL import Image
 import build_frames
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(BASE)
+ROOT = os.path.dirname(os.path.dirname(BASE))
 VID = os.path.join(os.path.dirname(ROOT), "海螺_视频_@图片1请基于这个大_574308429835190278.mp4")
 
 PARAMS = dict(hue_ref=136.4, hue_in=20.0, hue_out=34.0, sat_lo=0.30, sat_hi=0.55,

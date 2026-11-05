@@ -8,7 +8,7 @@ import glob, json, os
 import numpy as np
 from PIL import Image, ImageDraw
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 REPO = os.path.dirname(ROOT)
 SHOT = os.path.join(REPO, "docs", "screenshots")
 
@@ -71,7 +71,7 @@ def main():
               % (r["id"], r["displayName"], r["frames"], r["size"], r["mb"], r["resid"],
                  r["resid_max"], r["haze"], r["body"], r["feet"], r["scale"], r["offset"]))
     print("合计 %.1f MB" % total)
-    json.dump(rows, open(os.path.join(ROOT, "build", "_probe2", "qc.json"), "w", encoding="utf-8"),
+    json.dump(rows, open(os.path.join(ROOT, "build", "cache", "probe", "qc.json"), "w", encoding="utf-8"),
               ensure_ascii=False, indent=2)
 
     # 11 段预览拼图（取中段帧，棋盘格背景看半透明）

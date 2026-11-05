@@ -66,10 +66,9 @@ uv run python build\migrate_packs.py             :: 移动（不复制）
   "frames": { "format": "webp", "quality": 80, "fps": 24 },
   "defaultIdle": "dsh_idle",
   "license": {
-    "source": "DSMaid / 即梦（绿幕 mp4）",
-    "license": "AI 生成，未授权商用",
-    "author": "DSMaid",
-    "url": ""
+    "kind": "all-rights-reserved",
+    "source": "jimeng-2026-11-04 / hailuo HappyHorse 1.1（2026-11-05）",
+    "note": "生成工具商用条款未核实"
   },
   "clips": [
     {
@@ -98,11 +97,11 @@ uv run python build\migrate_packs.py             :: 移动（不复制）
 | `version` | 是 | 结构版本，当前 1；读到更高版本直接拒绝并提示升级 |
 | `packId` / `charId` | 是 | ASCII 稳定键，等于目录名；`charId` 预留给"同一角色多个皮肤" |
 | `role` | 是 | 角色显示名（可中文），菜单分组/设置页显示 |
-| `canvas` | 是 | **pack 级统一画布**（默认 576×530）。所有 clip 都按这个画布缩放和锚点对齐；逐段不同会导致换动作时角色跳动 |
+| `canvas` | 是 | **pack 级统一画布**（新建 pack 默认 576×530，可改）。所有 clip 都按这个画布缩放和锚点对齐；**跨 pack 的帧不能混用**。加载时校验每个 clip 的首帧尺寸，不一致就拒绝并列出是哪几段（不静默缩放） |
 | `frames.format` / `quality` | 是 | `webp`（默认 q80）或 `png`；pack 级统一 |
 | `frames.fps` | 是 | 默认 24；源 30fps 由工坊在抽帧时重采样，日志会写明 |
 | `defaultIdle` | 是 | 默认待机 clipId（默认 `dsh_idle`）。**不要靠"两个 type=idle"表达**，一个字段就够；换待机只改这一行 |
-| `license` | 是（可为空串） | 来源/许可/作者/链接，为将来商用留位。空字段不阻断运行，但分发前应填 |
+| `license` | 是 | `{kind, source, note}`。`kind` 见 §2.2；缺省按 `unknown`，不阻断本地运行，只在导出/发布与 `--verbose`/「关于素材」里提示 |
 | `clips[].clipId` | 是 | ASCII 键（`[0-9A-Za-z_-]`），唯一；菜单/配置/状态映射都引用它 |
 | `clips[].displayName` | 是 | 中文显示名（菜单里看到的文字） |
 | `clips[].type` | 是 | `idle` 或 `action` |
@@ -115,6 +114,33 @@ uv run python build\migrate_packs.py             :: 移动（不复制）
 | `clips[].tags` | 否 | 检索/推荐用标签 |
 | `clips[].crop` | 否 | 生成时整片统一裁边 `[l, t, r, b]`，仅记录，运行时不裁 |
 | `clips[].source` / `keyer` | 否 | 溯源与抠像参数，方便重抠复现 |
+
+### 2.1 画布（canvas）是 pack 级
+
+- 由 pack 自己在 `manifest.json` 声明；新建 pack 默认 **576×530**，新建弹窗里可以改。
+- **同一 pack 内所有 clip 必须同尺寸**；**跨 pack 的帧不能混用**——比例不同的帧会被拉伸或错位，不做静默缩放。
+- 加载时校验每个 clip 的首帧尺寸（只读文件头，不解码），不一致就**拒绝整个 pack** 并列出所有不一致的段。
+- 锚点 `anchor.foot`、`scale`、`offset` 都按该 pack 的 canvas 归一化；`state_map.py`、`pet.py`、tauri 的 `main.js` 里**不写死 576/530**。
+- 切换 pack 时窗口尺寸与右下边距（24/12px）按新 canvas 重算。实测：640×456 的测试 pack 在 mini 下窗口 300×214、位置 (955,525)，见 §7。
+
+### 2.2 license（素材许可）
+
+```json
+"license": { "kind": "all-rights-reserved", "source": "jimeng-2026-11-04 / hailuo HappyHorse 1.1", "note": "" }
+```
+
+| `kind` | 含义 | 附加要求 |
+|---|---|---|
+| `cc0` | 公共领域 | — |
+| `cc-by` | 署名 | `source` 建议写作者 |
+| `cc-by-nc` | 署名-非商用 | — |
+| `all-rights-reserved` | 保留所有权利 | **`source` 必填** |
+| `unknown` | 来源/条款未确认（默认） | — |
+| `custom` | 自定义 | **`note` 必填**，写清条款 |
+
+- `source` 是自由文本，写模型名与日期即可（如 `jimeng-2026-11-04`、`hailuo`）。
+- `unknown` **不阻塞本地运行**，只在两处提示：① 导出/发布 pack 时；② 启动 `--verbose` 或菜单「关于素材…」里列出。**不会弹窗打断使用**。
+- 代码是 GPL-3.0，**素材不适用 GPL**，各自独立授权；不要把代码协议套到素材上，也不要把不同来源的素材混进同一个宣称单一许可的 pack。
 
 ---
 
@@ -131,7 +157,7 @@ uv run python build\migrate_packs.py             :: 移动（不复制）
 | `defaultIdle` 指向不存在的 clip | 回退到第一个 `type=idle`，再回退第一个 clip | `defaultIdle=dsh_idle 不存在，已回退到 <id>` |
 | 某 clip 帧目录缺失 | 跳过该 clip（菜单不显示），其余照常 | `跳过 dsh_shock：缺 frames/dsh_shock/` |
 | 某 clip 帧数 < 声明的 `count` | 按实际帧数播放，警告 | `dsh_shock 实际 108 帧，manifest 声明 110；按 108 播放` |
-| 某 clip 尺寸 ≠ canvas | **拒绝该 clip**（不缩放，避免错位/糊） | `跳过 dsh_shock：帧尺寸 640×720 与画布 576×530 不一致` |
+| 某 clip 尺寸 ≠ canvas | **整个 pack 拒绝加载**（不缩放，避免错位/糊），报错列出所有不一致的段 | `packs/maid-dsh 的帧尺寸与 canvas=576×530 不一致：\n  dsh_shock 640x720\n  dsh_play 512x480\n同一 pack 内所有 clip 必须统一画布；跨 pack 的帧不能混用。` |
 | `fps` 与 pack 不一致 | 警告，仍按该 clip 的 fps 播放（速度可能不同步） | `dsh_shock fps=30 与 pack 的 24 不一致，按 30 播放` |
 | alpha 丢失（整帧不透明） | 仍然播放，但提示"透明区会挡下层" | `dsh_shock 疑似没有 alpha（全帧不透明），检查抠像导出` |
 | `anchor` 缺失 | 用默认脚底锚点 | `dsh_shock 缺 anchor.foot，用默认 [0.5, 0.996]` |
@@ -143,7 +169,7 @@ uv run python build\migrate_packs.py             :: 移动（不复制）
 
 ## 4. 接入流程：从绿幕 mp4 到菜单里的一个动作
 
-工坊（`deskpet-python\build\workshop.py`）就是 **素材包编辑器**：它现在的输出已经是 `packs/<packId>/frames/<clipId>/` + 合并 `manifest.json`，不再写独立的 `frames_<clipId>`。不需要额外做"导出为 pack"按钮——工坊的导出目标本来就是 pack；要换系列就"新建 pack"。
+工坊（`deskpet-python\build\tools\workshop.py`）就是 **素材包编辑器**：它现在的输出已经是 `packs/<packId>/frames/<clipId>/` + 合并 `manifest.json`，不再写独立的 `frames_<clipId>`。不需要额外做"导出为 pack"按钮——工坊的导出目标本来就是 pack；要换系列就"新建 pack"。
 
 ```
 ① 视频拖进工坊  →  ② 预览/裁边/抠像  →  ③ 选目标 pack，点开始生成
@@ -181,7 +207,7 @@ uv run python build\migrate_packs.py             :: 移动（不复制）
 ## 5. 多角色切换与数据隔离
 
 - **切换**：改 `packs/active.json`（`{"pack":"maid-basic"}`），或未来加设置页下拉。切换后窗口保持当前档位，按新 pack 的 `canvas` 重新计算尺寸与缩放。
-- **窗口尺寸**：画布比例固定 576:530；宽度由档位决定（屏幕宽 10%/15%/30%），高度按比例算。**不按 pack 各自设窗口大小**，否则切角色会跳。
+- **窗口尺寸**：宽度由档位决定（屏幕宽 10%/15%/30%），高度按**该 pack 的 canvas 比例**算（如 640×456 的 pack：高度 = 宽度 × 456/640）；右下边距固定 24/12px。切 pack 时按新 canvas 重算，不会被旧比例卡住。
 - **缩放/锚点**：全在 pack 的 `manifest.json` 里（`scale`/`offset`/`anchor.foot`），运行时按同一画布对齐脚底，所以换 pack 不需要改代码。
 - **状态映射**：`state-map.json` **按 pack 分文件**（`packs/<packId>/state-map.json`），每个 pack 自己一套；互不影响，也不做隐式继承（新 pack 没写就全用默认 `defaultIdle`）。
 - **亲密度/养成数据**：**按 packId 分目录**存放，建议 `packs/<packId>/pet-state.json`（或 `%APPDATA%/deskpet/<packId>/`）。当前实现还没有亲密度系统（状态映射里已留"用户响应计正向"的口子），落库时按这个规则隔离。
@@ -223,7 +249,7 @@ Tauri 版的"最小可运行组合"是 `deskpet-tauri.exe` + `assets\`（`prepar
 
 ## 7. 验收记录（默认值一次跑通）
 
-`build\_accept.py` 只用 `default_params()`（`hue_ref=136` + 自动裁黑边）走 `build_frames.build_clip`，输出到 `build/_accept_out/`（跑完可删）：
+`build\tools\_accept.py` 只用 `default_params()`（`hue_ref=136` + 自动裁黑边）走 `build_frames.build_clip`，输出到 `build\cache\tmp\_accept_out/`（跑完可删）：
 
 | 素材 | 源 fps | 裁边 | 帧数 | 体积 | 耗时 | 残留绿 | 脚底 y |
 |---|---|---|---|---|---|---|---|
@@ -231,6 +257,15 @@ Tauri 版的"最小可运行组合"是 `deskpet-tauri.exe` + `assets\`（`prepar
 | 炸毛（黑边+绿幕） | 24 | 并集 `[170,2,658,478]` | 110 | 3.79 MB | 27.7s | 0.28%（最大 0.72%） | 528 |
 
 结论：拖进一个新视频、什么都不改、点开始生成，两段结果都可用（残留绿 < 0.3%）；30→24 的转换有日志，不是偷偷做的。
+
+**画布 / 重抠实测（本轮）**
+
+| 项目 | 数字 |
+|---|---|
+| 640×456 测试 pack，mini 300px 宽 | 窗口 300×214，位置 (955,525)，canvas=640×456，右下边距 24/12 正确 |
+| `dsh_idle` 从 `material/DSMaid/待机.mp4` 全新抽帧重建（96 帧） | **43.7s**，3.89MB，与仓库内帧 **96/96 字节一致**，像素差 0 |
+
+`build\cache` 可随时整目录删除，代价是下次重建要重新抽帧：上表 96 帧约 44 秒。
 
 ---
 

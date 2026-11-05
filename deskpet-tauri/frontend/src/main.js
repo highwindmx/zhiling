@@ -24,7 +24,8 @@ const TIERS = [
 ];
 const DEFAULT_TIER = "中";
 
-let CANVAS = [576, 530];
+let CANVAS = null;      // 由 pack 的 manifest.json 声明（见 loadClips），不再写死 576×530
+let LICENSE = null;
 let CLIPS = {};
 let IDLE_ID = null;
 let ACTIONS = [];
@@ -60,17 +61,21 @@ function logEvent(msg) {
 }
 
 // ---- 帧清单 --------------------------------------------------------------
-// clips.json（顺序/类型/名字/defaultIdle）+ meta.json（目录/帧数/fps/格式/画布）
-// 与 deskpet-python 读的是同一份文件，字段语义完全一致，只是这里多了一步合并。
-async function fetchJson(rel) {
+// manifest.json（pack 级：画布 / 角色 / license）+ clips.json（顺序/类型/名字/defaultIdle）
+// + meta.json（旧格式的目录/帧数/fps，兼容用）。画布以 manifest.canvas 为准。
+async function fetchJson(rel, optional = false) {
   const res = await fetch(assetUrl(rel), { cache: "no-store" });
-  if (!res.ok) throw new Error(`${rel} HTTP ${res.status}（${assetUrl(rel)}）`);
+  if (!res.ok) {
+    if (optional) return null;
+    throw new Error(`${rel} HTTP ${res.status}（${assetUrl(rel)}）`);
+  }
   return res.json();
 }
 
 async function loadClips() {
   const raw = await fetchJson("clips.json");
-  const meta = await fetchJson("meta.json");
+  const meta = (await fetchJson("meta.json", true)) || {};
+  const manifest = (await fetchJson("manifest.json", true)) || {};
   const metaClips = meta.clips || {};
   const list = Array.isArray(raw.clips) ? raw.clips : Object.values(raw.clips || {});
   CLIPS = {};
@@ -81,18 +86,22 @@ async function loadClips() {
     CLIPS[id] = {
       id,
       dir: m.dir || e.dir || `frames_${id}`,
-      fps: m.fps ?? 24,
-      count: m.count ?? 1,
-      format: m.format || "webp",
-      name: e.name || id,
+      fps: m.fps ?? e.fps ?? 24,
+      count: m.count ?? e.count ?? 1,
+      format: m.format || e.format || "webp",
+      name: e.displayName || e.name || id,
       type: e.type || "action",
       loop: !!e.loop,
       priority: e.priority ?? 99,
     };
   }
-  if (meta.canvas && meta.canvas.w && meta.canvas.h) {
-    CANVAS = [meta.canvas.w, meta.canvas.h];
-  }
+  // 画布是 pack 级属性：manifest → clips.json（派生字段）→ 旧 meta.json，三级兜底
+  const cv = (manifest.canvas && manifest.canvas.w && manifest.canvas.h && manifest.canvas)
+    || (raw.canvas && raw.canvas.w && raw.canvas.h && raw.canvas)
+    || (meta.canvas && meta.canvas.w && meta.canvas.h && meta.canvas);
+  if (!cv) throw new Error("manifest.json / clips.json 里没有 canvas（画布是 pack 必填字段）");
+  CANVAS = [Number(cv.w), Number(cv.h)];
+  LICENSE = manifest.license || null;
   const ids = Object.keys(CLIPS);
   // defaultIdle 显式指定默认待机（旧 idle 可以降级成普通动作）；没有就退回第一个 type=idle
   IDLE_ID = (raw.defaultIdle && CLIPS[raw.defaultIdle])
@@ -424,7 +433,29 @@ window.addEventListener("resize", () => {
 });
 
 // ---- 尺寸档位 ------------------------------------------------------------
-const aspect = () => (CANVAS[1] || 530) / (CANVAS[0] || 576);
+const aspect = () => CANVAS[1] / CANVAS[0];
+
+// 加载时校验：所有 clip 的首帧尺寸必须等于 pack canvas。不一致就明确报错并列出段名，
+// 不静默缩放到某一段的尺寸（与 pet.py 的 validate_canvas_frames 同语义）。
+async function validateFrameSizes() {
+  const bad = [];
+  for (const id of Object.keys(CLIPS)) {
+    try {
+      const res = await fetch(frameUrl(id, 0), { cache: "no-store" });
+      if (!res.ok) { bad.push(`${id}: 缺首帧（HTTP ${res.status}）`); continue; }
+      const bmp = await createImageBitmap(await res.blob());
+      if (bmp.width !== CANVAS[0] || bmp.height !== CANVAS[1]) {
+        bad.push(`${id}: ${bmp.width}x${bmp.height}`);
+      }
+      if (bmp.close) bmp.close();
+    } catch (e) {
+      bad.push(`${id}: 首帧读不出来`);
+    }
+  }
+  if (bad.length) {
+    throw new Error(`帧尺寸与 canvas=${CANVAS[0]}x${CANVAS[1]} 不一致：\n${bad.join("\n")}`);
+  }
+}
 
 function screenBox() {
   const s = window.screen;
@@ -467,8 +498,26 @@ window.__deskpetPick = (key) => {
     invoke("open_workshop")
       .then((p) => logEvent("workshop_open path=" + p))
       .catch((e) => showHint("这个功能需要 Python 版工具", String(e)));
+  } else if (key === "about_assets") {
+    showNotice("关于素材", licenseText());
   } else if (key === "quit") quitApp();
 };
+
+function licenseText() {
+  const l = LICENSE || {};
+  const kind = l.kind || "unknown";
+  const src = l.source || "（未填写）";
+  const lines = [
+    `画布：${CANVAS[0]}x${CANVAS[1]}`,
+    `许可：${kind}`,
+    `来源：${src}`,
+  ];
+  if (l.note) lines.push(`备注：${l.note}`);
+  if (kind === "unknown") {
+    lines.push("", "「unknown」不阻塞本地运行；导出/发布这个 pack 前请补 license.kind 与 source。");
+  }
+  return lines.join("<br>");
+}
 
 // ---- 右键菜单 ------------------------------------------------------------
 document.addEventListener("contextmenu", (e) => {
@@ -833,13 +882,17 @@ async function startStateMap() {
   setInterval(stateTick, 1000);
 }
 
-function showHint(title, detail) {
+function showNotice(title, bodyHtml) {
   const el = document.getElementById("hint");
   if (!el) return;
   el.style.display = "block";
-  el.innerHTML = `<b>${title}</b><br><br>素材目录：<br><code>${detail}</code><br><br>`
+  el.innerHTML = `<b>${title}</b><br><br>${bodyHtml}`;
+}
+
+function showHint(title, detail) {
+  showNotice(title, `素材目录：<br><code>${detail}</code><br><br>`
     + `把 <code>assets</code> 目录放到 exe 同级，或设置环境变量 `
-    + `<code>DESKPET_ASSETS</code> 指向素材目录。`;
+    + `<code>DESKPET_ASSETS</code> 指向素材目录。`);
 }
 
 // ---- 启动 ----------------------------------------------------------------
@@ -882,6 +935,11 @@ window.__deskpetDebug = {
     prefetch(IDLE_ID, 0);
     // 素材目录已就绪，顺便把状态映射配置读进来（热加载，见 §state-map）
     startStateMap();
+    // 画布校验放后台：窗口先出来；不一致时在页面里明确列出是哪几段（不静默缩放）
+    validateFrameSizes().catch((e) => {
+      console.error("画布校验失败", e);
+      showNotice("帧尺寸与画布不一致", String(e && e.message ? e.message : e).replace(/\n/g, "<br>"));
+    });
     raf = requestAnimationFrame(loop);
   } catch (e) {
     console.error("素材加载失败", e);

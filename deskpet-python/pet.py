@@ -39,11 +39,13 @@ MASK_ALPHA_MIN = 8      # alpha >= 8 视为宠物本体（alpha<8 在桌面上�
 MASK_REFRESH_MS = 150   # 掩码最短更新间隔，避免每帧重建 QRegion
 
 META = None
+MANIFEST = None
 CLIPS = {}
 EXTS = {}          # 每段实际使用的帧后缀："webp" 或 "png"
 ACTIONS = []       # 动作 clip 的 id，按优先级排序
 IDLE_ID = "idle"
 LOG_PATH = None
+VERBOSE = False
 PACKS_ROOT = os.path.join(os.path.dirname(ROOT), "packs")
 
 
@@ -65,20 +67,77 @@ def active_pack():
 
 
 PACK_ID = active_pack()
-PACK_DIR = os.path.join(PACKS_ROOT, PACK_ID) if PACK_ID else ""
-# 状态映射：pack 里的配置（mini 与 tauri 版读同一份语义，见 docs/material-packs.md）
-STATE_MAP_PATH = os.path.join(PACK_DIR, "state-map.json") if PACK_DIR else ""
+
+
+def _set_pack(pid):
+    """--pack / 菜单切 pack 时重算目录与状态映射路径（窗口尺寸随之按新 canvas 重算）。"""
+    global PACK_ID, PACK_DIR, STATE_MAP_PATH
+    PACK_ID = pid
+    PACK_DIR = os.path.join(PACKS_ROOT, pid) if pid else ""
+    STATE_MAP_PATH = os.path.join(PACK_DIR, "state-map.json") if PACK_DIR else ""
+
+
+_set_pack(PACK_ID)
+
+
+def pack_canvas():
+    """画布是 pack 级属性：manifest.canvas 优先，其次 clips.json，最后旧的 meta.json。
+
+    返回 (w, h) 与来源说明；任何地方都不硬编码 576/530（DEFAULT_CANVAS 只在建新 pack 时用）。
+    """
+    if MANIFEST and MANIFEST.get("canvas"):
+        c = MANIFEST["canvas"]
+        return (int(c["w"]), int(c["h"]), "manifest")
+    if META and META.get("clips_raw") and META["clips_raw"].get("canvas"):
+        c = META["clips_raw"]["canvas"]
+        return (int(c["w"]), int(c["h"]), "clips.json")
+    c = (META or {}).get("canvas") or {}
+    if c.get("w") and c.get("h"):
+        return (int(c["w"]), int(c["h"]), "meta.json(legacy)")
+    raise SystemExit("没有可用的画布：packs/%s/manifest.json 缺 canvas" % (PACK_ID or "?"))
+
+
+def validate_canvas_frames(canvas):
+    """加载时校验：所有 clip 的首帧尺寸都必须等于 pack canvas。
+
+    不一致时列出每一段的实际尺寸并退出，**不静默缩放到某一段的尺寸**。
+    """
+    from PyQt6.QtGui import QImageReader
+    bad = []
+    for cid, c in CLIPS.items():
+        path = frame_file(cid, 0)
+        if not os.path.exists(path):
+            bad.append((cid, "缺首帧"))
+            continue
+        size = QImageReader(path).size()
+        if not size.isValid():
+            bad.append((cid, "首帧读不出来"))
+            continue
+        if (size.width(), size.height()) != canvas:
+            bad.append((cid, "%dx%d" % (size.width(), size.height())))
+    if bad:
+        lines = ["packs/%s 的帧尺寸与 canvas=%dx%d 不一致：" % (PACK_ID, canvas[0], canvas[1])]
+        lines += ["  %-14s %s" % (cid, got) for cid, got in bad]
+        lines.append("同一 pack 内所有 clip 必须统一画布；跨 pack 的帧不能混用。"
+                     "改 manifest.canvas 或重新导出这些段。")
+        raise SystemExit("\n".join(lines))
 
 
 def load_clips():
-    """clips.json 管顺序/类型/中文名/defaultIdle；meta.json 管目录、帧数、fps、格式。"""
+    """clips.json 管顺序/类型/中文名/defaultIdle；manifest/meta.json 管目录、帧数、fps、格式。
+
+    优先读当前 pack 的 clips.json（pack 自洽），没有才回退 deskpet-python/clips.json（运行时索引）。
+    """
     global IDLE_ID
     meta_clips = META.get("clips", {})
-    path = os.path.join(ROOT, "clips.json")
+    path = os.path.join(PACK_DIR, "clips.json") if PACK_DIR else ""
+    if not path or not os.path.exists(path):
+        path = os.path.join(ROOT, "clips.json")
     default_idle = None
     if os.path.exists(path):
         with open(path, encoding="utf-8") as f:
             raw = json.load(f)
+        META["clips_raw"] = raw
         arr = raw.get("clips", [])
         default_idle = raw.get("defaultIdle")
     else:
@@ -224,7 +283,10 @@ class Pet(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
 
-        self.aspect = META["canvas"]["h"] / META["canvas"]["w"]
+        cw, ch, cv_src = pack_canvas()
+        self.canvas = (cw, ch)
+        self.canvas_src = cv_src
+        self.aspect = ch / cw
         self.width_px = width
         self.resize(width, round(width * self.aspect))
 
@@ -478,6 +540,25 @@ class Pet(QWidget):
         except OSError as exc:
             QMessageBox.warning(self, "素材工坊", "启动失败：%s" % exc)
 
+    def about_assets(self):
+        """菜单「关于素材」：列出 pack 的 license 与画布。只在用户主动点开时出现，不自动弹窗。"""
+        from PyQt6.QtWidgets import QMessageBox
+        lic = (MANIFEST or {}).get("license") or {}
+        kind = lic.get("kind", "unknown")
+        lines = [
+            "素材包：packs/%s" % (PACK_ID or "?"),
+            "角色：%s" % ((MANIFEST or {}).get("role") or "（未填写）"),
+            "画布：%dx%d（来源 %s）" % (self.canvas[0], self.canvas[1], self.canvas_src),
+            "许可：%s" % kind,
+            "来源：%s" % (lic.get("source") or "（未填写）"),
+        ]
+        if lic.get("note"):
+            lines.append("备注：%s" % lic["note"])
+        if kind == "unknown":
+            lines.append("")
+            lines.append("「unknown」不阻塞本地运行；导出/发布这个 pack 前请补 license.kind 与 source。")
+        QMessageBox.information(self, "关于素材", "\n".join(lines))
+
     def _build_menu(self):
         menu = QMenu(self)
         group = QActionGroup(self)
@@ -499,6 +580,9 @@ class Pet(QWidget):
         workshop_act = QAction("素材工坊…", self)
         workshop_act.triggered.connect(self.open_workshop)
         menu.addAction(workshop_act)
+        about_act = QAction("关于素材…", self)
+        about_act.triggered.connect(self.about_assets)
+        menu.addAction(about_act)
         quit_act = QAction("退出", self)
         quit_act.triggered.connect(QApplication.quit)
         menu.addAction(quit_act)
@@ -521,25 +605,44 @@ class Pet(QWidget):
 
 
 def main():
-    global META, CLIPS, ACTIONS, LOG_PATH
+    global META, MANIFEST, CLIPS, ACTIONS, LOG_PATH, VERBOSE
     ap = argparse.ArgumentParser()
     ap.add_argument("--width", type=int, default=0, help="宠物宽度(像素)，默认中档=屏幕宽 15%%")
+    ap.add_argument("--pack", default="", help="指定素材包（默认 packs/active.json）")
+    ap.add_argument("--verbose", action="store_true", help="启动时打印 pack 画布与素材 license")
     ap.add_argument("--log", default="", help="把启动/动作时间点写到这个文件，用于测时")
     ap.add_argument("--clip", default="", help="启动时直接播某个动作（调试用）")
     ap.add_argument("--state", default="", help="启动时强制进入某个状态（调试用：click/done/…）")
-    ap.add_argument("--state-map", default=STATE_MAP_PATH, help="状态映射配置路径（默认 packs/dsh/state-map.json）")
+    ap.add_argument("--state-map", default="", help="状态映射配置路径（默认当前 pack 的 state-map.json）")
     ap.add_argument("--freeze", action="store_true",
                     help="调试用：停在第一帧不播，供命中测试取稳定样本")
     args = ap.parse_args()
     LOG_PATH = args.log or None
+    VERBOSE = args.verbose
+
+    if args.pack:
+        _set_pack(args.pack)
+        if not os.path.isdir(os.path.join(PACKS_ROOT, args.pack)):
+            raise SystemExit("找不到素材包：packs/%s" % args.pack)
 
     META = json.load(open(os.path.join(ROOT, "meta.json"), encoding="utf-8"))
+    if PACK_DIR and os.path.exists(os.path.join(PACK_DIR, "manifest.json")):
+        MANIFEST = json.load(open(os.path.join(PACK_DIR, "manifest.json"), encoding="utf-8"))
     CLIPS, ACTIONS = load_clips()
+    canvas = pack_canvas()[:2]
+    validate_canvas_frames(canvas)
     if PACK_ID:
-        log("pack=%s（packs/%s），%d 段，待机=%s" % (PACK_ID, PACK_ID, len(CLIPS), IDLE_ID))
+        log("pack=%s（packs/%s），%d 段，待机=%s，canvas=%dx%d" %
+            (PACK_ID, PACK_ID, len(CLIPS), IDLE_ID, canvas[0], canvas[1]))
     else:
         log("packs/ 里没有可用素材包，回退旧 deskpet-python/frames_* 目录；"
-            "建议运行 python build/migrate_packs.py 迁移到 packs/<packId>/")
+            "建议运行 python build/tools/migrate_packs.py 迁移到 packs/<packId>/")
+    if VERBOSE:
+        lic = (MANIFEST or {}).get("license") or {}
+        print("[verbose] canvas=%dx%d（%s） license=%s 来源=%s%s"
+              % (canvas[0], canvas[1], pack_canvas()[2],
+                 lic.get("kind", "unknown"), lic.get("source") or "（未填写）",
+                 (" 备注=" + lic["note"]) if lic.get("note") else ""), file=sys.stderr)
 
     app = QApplication(sys.argv)
     screen = app.primaryScreen().availableGeometry()
@@ -556,7 +659,8 @@ def main():
     # ---- 状态映射：同一份 packs/<packId>/state-map.json，热加载 ----
     light = {cid: {"fps": c["fps"], "count": c["count"], "name": c["displayName"]}
              for cid, c in CLIPS.items()}
-    pet.sm = StateMap(args.state_map, light, pet.state_play, pet.state_play_idle, log)
+    sm_path = args.state_map or STATE_MAP_PATH
+    pet.sm = StateMap(sm_path, light, pet.state_play, pet.state_play_idle, log)
     pet.sm.playing = IDLE_ID
     pet.sm.set_state("idle", "启动")
 
@@ -576,8 +680,9 @@ def main():
         pet.play_action(args.clip)
     if args.freeze:
         pet.timer.stop()
-    log("first_paint_ms=%.0f width=%d pid=%d"
-        % ((time.monotonic() - T0) * 1000, pet.width(), os.getpid()))
+    log("first_paint_ms=%.0f width=%d height=%d pos=%d,%d canvas=%dx%d pid=%d"
+        % ((time.monotonic() - T0) * 1000, pet.width(), pet.height(),
+           pet.x(), pet.y(), pet.canvas[0], pet.canvas[1], os.getpid()))
     QTimer.singleShot(6000, lambda: log(
         "mem_6s_mb=%.1f peak_mb=%.1f cached=%d mask_builds=%d mask_updates=%d "
         "mask_last_ms=%.2f mask_total_ms=%.2f"

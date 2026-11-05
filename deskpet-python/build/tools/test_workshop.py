@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import QApplication
 import workshop as ws
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(BASE)
+ROOT = os.path.dirname(os.path.dirname(BASE))
 OUT = BASE
 
 app = QApplication(sys.argv)

@@ -8,11 +8,16 @@
 """
 import glob, json, os, shutil, time
 
-BASE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(BASE)              # deskpet-python/
-REPO = os.path.dirname(ROOT)              # 仓库根
+BASE = os.path.dirname(os.path.abspath(__file__))       # build/tools/
+BUILD = os.path.dirname(BASE)                            # build/
+ROOT = os.path.dirname(BUILD)                            # deskpet-python/
+REPO = os.path.dirname(ROOT)                             # 仓库根
 PACKS = os.path.join(REPO, "packs")
+CACHE = os.path.join(BUILD, "cache")
 DEFAULT_PACK = "maid-dsh"       # 多 pack 时由 packs/active.json 决定，这只是兜底
+# 新建 pack 的默认画布；画布是 pack 级属性，加载时以 manifest 为准，不在这里硬编码
+DEFAULT_CANVAS = (576, 530)
+LICENSE_KINDS = ("cc0", "cc-by", "cc-by-nc", "all-rights-reserved", "unknown", "custom")
 
 
 def list_packs():
@@ -78,14 +83,14 @@ def save_manifest(pack, data):
     return p
 
 
-def new_pack(pack, role, canvas=(576, 530)):
+def new_pack(pack, role, canvas=DEFAULT_CANVAS):
     if os.path.isdir(pack_dir(pack)):
         raise FileExistsError(pack_dir(pack))
     data = {"version": 1, "packId": pack, "charId": pack, "role": role,
-            "canvas": {"w": canvas[0], "h": canvas[1]},
+            "canvas": {"w": int(canvas[0]), "h": int(canvas[1])},
             "frames": {"format": "webp", "quality": 80, "fps": 24},
             "defaultIdle": None,
-            "license": {"source": "", "license": "", "author": "", "url": ""},
+            "license": {"kind": "unknown", "source": "", "note": ""},
             "clips": []}
     save_manifest(pack, data)
     with open(os.path.join(pack_dir(pack), "clips.json"), "w", encoding="utf-8") as f:
@@ -93,6 +98,91 @@ def new_pack(pack, role, canvas=(576, 530)):
     os.makedirs(os.path.join(pack_dir(pack), "frames"), exist_ok=True)
     os.makedirs(os.path.join(pack_dir(pack), "posters"), exist_ok=True)
     return data
+
+
+def license_errors(data):
+    """license 校验。返回错误列表；unknown 不阻塞本地运行，只在导出/发布时提示。
+
+    - kind 必须是 LICENSE_KINDS 之一，缺省按 unknown 处理
+    - custom 必须有 note
+    - all-rights-reserved 必须有 source（来源不明的素材不能声称"保留所有权利"）
+    """
+    lic = data.get("license")
+    if not isinstance(lic, dict) or not lic:
+        return []                                   # 老 pack 没写 license：按 unknown，不阻塞
+    kind = lic.get("kind", "unknown")
+    if kind not in LICENSE_KINDS:
+        return ["license.kind 非法: %r（可选 %s）" % (kind, "/".join(LICENSE_KINDS))]
+    out = []
+    if kind == "custom" and not str(lic.get("note") or "").strip():
+        out.append("license.kind=custom 时必须写 license.note")
+    if kind == "all-rights-reserved" and not str(lic.get("source") or "").strip():
+        out.append("license.kind=all-rights-reserved 时必须写 license.source")
+    return out
+
+
+def license_hint(data):
+    """返回给人看的 license 一行摘要；unknown 时带上"需要补来源"的提醒。"""
+    lic = data.get("license") or {}
+    kind = lic.get("kind", "unknown")
+    src = lic.get("source") or "（未填写来源）"
+    note = ("；" + lic["note"]) if lic.get("note") else ""
+    if kind == "unknown":
+        return "unknown（来源：%s%s）——发布/分发前请补 license.kind 与 source" % (src, note)
+    return "%s（来源：%s%s）" % (kind, src, note)
+
+
+def load_manifest_validated(pack=None):
+    """读取 manifest 并校验 license；license 错误不阻塞（unknown 允许本地运行）。"""
+    data = load_manifest(pack)
+    for e in license_errors(data):
+        raise ValueError("packs/%s 的 license 非法：%s" % (pack or active_pack(), e))
+    return data
+
+
+def check_canvas(pack, data, ext_order=("webp", "png")):
+    """校验 pack 内所有 clip 的帧尺寸等于 manifest.canvas。
+
+    只读每段第一帧的文件头（PIL.Image.open 不解码整帧），速度快；
+    出现不一致时返回 [(clipId, 实际尺寸)]，由调用方报错——**不静默缩放**。
+    """
+    from PIL import Image
+    canvas = data.get("canvas") or {}
+    cw, ch = int(canvas.get("w", 0)), int(canvas.get("h", 0))
+    if not cw or not ch:
+        return [("manifest", "canvas 缺失")]
+    bad = []
+    for c in data.get("clips", []):
+        cid = c.get("clipId") or "?"
+        d = os.path.join(pack_dir(pack), c.get("dir") or ("frames/" + cid))
+        path = None
+        for ext in [c.get("format")] + list(ext_order):
+            if not ext:
+                continue
+            p = os.path.join(d, "f0000." + ext)
+            if os.path.exists(p):
+                path = p
+                break
+        if not path:
+            bad.append((cid, "缺帧目录/首帧（%s）" % d))
+            continue
+        try:
+            with Image.open(path) as im:
+                w, h = im.size
+        except Exception as e:                      # noqa: BLE001
+            bad.append((cid, "读不了首帧：%s" % e))
+            continue
+        if (w, h) != (cw, ch):
+            bad.append((cid, "%dx%d" % (w, h)))
+    return bad
+
+
+def canvas_error_text(pack, canvas, bad):
+    lines = ["packs/%s 的帧尺寸与 manifest.canvas=%dx%d 不一致：" % (pack, canvas[0], canvas[1])]
+    for cid, got in bad:
+        lines.append("  %-14s %s" % (cid, got))
+    lines.append("同一 pack 内必须统一画布；跨 pack 的帧不能混用。改 manifest.canvas 或重新导出帧。")
+    return "\n".join(lines)
 
 
 def upsert_clip(pack, entry):
@@ -148,6 +238,7 @@ def sync_runtime(pack=None, dst=None):
             "count": c.get("count", 0),
         })
     out = {"version": 1, "defaultIdle": data.get("defaultIdle") or (clips[0]["id"] if clips else None),
+           "canvas": data.get("canvas") or {"w": DEFAULT_CANVAS[0], "h": DEFAULT_CANVAS[1]},
            "clips": clips}
 
     def _write(path):
@@ -167,13 +258,13 @@ def migrate_from_legacy(pack=DEFAULT_PACK):
     clips = json.load(open(os.path.join(ROOT, "clips.json"), encoding="utf-8"))
     meta = json.load(open(os.path.join(ROOT, "meta.json"), encoding="utf-8"))
     mclips = meta.get("clips", {})
-    canvas = meta.get("canvas", {"w": 576, "h": 530})
+    canvas = meta.get("canvas", {"w": DEFAULT_CANVAS[0], "h": DEFAULT_CANVAS[1]})
     data = {"version": 1, "packId": pack, "role": "蓝鲸女仆（DSMaid）",
             "canvas": {"w": canvas["w"], "h": canvas["h"]},
             "frames": {"format": "webp", "quality": 80, "fps": 24},
             "defaultIdle": clips.get("defaultIdle", "dsh_idle"),
-            "license": {"source": "DSMaid / 即梦（绿幕 mp4）", "license": "AI 生成，未授权商用",
-                        "author": "DSMaid", "url": ""},
+            "license": {"kind": "unknown", "source": "jimeng / hailuo（HappyHorse 1.1）",
+                        "note": "生成工具商用条款未核实"},
             "clips": []}
     for c in clips["clips"]:
         m = mclips.get(c["id"], {})

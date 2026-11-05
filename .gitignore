@@ -36,20 +36,9 @@ material/
 # 第三方只读目录（dsh-deskpet-bridge，不入库也不改）
 dsh-deskpet-bridge/
 
-# build 目录下的抽帧中间产物（保留 .py 脚本）
-deskpet-python/build/f24/
-deskpet-python/build/action_raw/
-deskpet-python/build/raw_frames/
-deskpet-python/build/raw_*/
-deskpet-python/build/probe_*/
-deskpet-python/build/_accept_out/
-deskpet-python/build/_probe2/
-deskpet-python/build/test_frames/
-deskpet-python/build/webp_test/
-deskpet-python/build/judge/
-deskpet-python/build/*.png
-deskpet-python/build/*.log
-deskpet-python/build/*.txt
+# build 目录：只忽略可重建的中间产物（cache/），脚本（build/tools/）照常跟踪
+# cache/ 可整目录删除，下一次从 material/ 的源视频重新抽帧即可
+deskpet-python/build/cache/
 deskpet-python/debug.log
 deskpet-python/*.log
 harness_bridge_test.mjs

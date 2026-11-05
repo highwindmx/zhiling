@@ -8,7 +8,7 @@ from keyer import key_frame
 import imageio_ffmpeg
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(BASE)
+ROOT = os.path.dirname(os.path.dirname(BASE))
 OUT_W = 576                      # 磁盘上一档：大档宽度；运行时再按所选档位缩小
 OUT_FMT = "webp"                 # 输出格式：webp(有损+alpha，约为 png 的 1/7) / png
 WEBP_Q = 80                      # 有损质量；q80 在 576px 下与 png 肉眼无差
@@ -29,8 +29,8 @@ CANVAS_H = 760                   # 画布高度：原 720 + 顶部 30px 透明�
 FOOT = (414, 759)                # 画布内脚底锚点
 CROP = (284, 0, 1110, 720)       # 原图裁切范围，宽 827
 
-ACTION_RAW = os.path.join(BASE, "action_raw")
-IDLE_RAW = os.path.join(BASE, "f24")
+ACTION_RAW = os.path.join(BASE, "..", "cache", "raw", "action")
+IDLE_RAW = os.path.join(BASE, "..", "cache", "raw", "idle24")
 ff = imageio_ffmpeg.get_ffmpeg_exe()
 
 
@@ -125,9 +125,12 @@ def build_clip(spec, log=print):
     out_w = int(spec.get("width", OUT_W))
     fmt = spec.get("fmt", OUT_FMT)
     qual = int(spec.get("quality", WEBP_Q))
-    # 画布比例固定（与旧素材同一套对齐基准），不随源片裁切范围变化，否则不同 clip
-    # 的画布尺寸会互相错位
-    oh = round(out_w * CANVAS_H / (CROP[2] - CROP[0]))
+    # 画布尺寸：pack 模式用 spec 里声明的 width/height（画布是 pack 级属性）；
+    # 缺省才回退旧素材的固定比例，避免画布在不同 clip 之间漂移
+    if spec.get("height"):
+        oh = int(spec["height"])
+    else:
+        oh = round(out_w * CANVAS_H / (CROP[2] - CROP[0]))
     # crop：整片统一裁一次（黑边这类逐帧会变化的边，绝不能逐帧各裁，否则脚底会抖）
     crop = tuple(spec["crop"]) if spec.get("crop") else None
 
@@ -136,7 +139,7 @@ def build_clip(spec, log=print):
         log("源片 %.2ffps → 目标 %dfps：抽帧时统一重采样（锚点按目标帧率算，不会抖）"
             % (src_fps, fps))
 
-    raw_dir = os.path.join(BASE, "raw_" + cid)
+    raw_dir = spec.get("raw_dir") or os.path.join(BASE, "..", "cache", "raw", cid)
     files = extract_frames(src, raw_dir, fps)
     if not files:
         raise RuntimeError("抽帧为空：%s" % src)

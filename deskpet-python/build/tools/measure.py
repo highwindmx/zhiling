@@ -3,7 +3,7 @@ import ctypes, os, subprocess, sys, time
 from ctypes import wintypes
 from PIL import ImageGrab
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PY = os.path.join(ROOT, ".venv", "Scripts", "python.exe")
 LOG = os.path.join(ROOT, "build", "startup.log")
 SHOT = os.path.join(ROOT, "build", "proof_small.png")

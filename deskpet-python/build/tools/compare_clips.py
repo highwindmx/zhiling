@@ -6,10 +6,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import imageio_ffmpeg
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(BASE)
+ROOT = os.path.dirname(os.path.dirname(BASE))
 NEW = os.path.join(ROOT, "assets", "HappyHorse 1.1_1793774480874.mp4")
-RAW = os.path.join(BASE, "action_raw")
-IDLE_RAW = os.path.join(BASE, "f24")
+RAW = os.path.join(BASE, "..", "cache", "raw", "action")
+IDLE_RAW = os.path.join(BASE, "..", "cache", "raw", "idle24")
 os.makedirs(RAW, exist_ok=True)
 
 ff = imageio_ffmpeg.get_ffmpeg_exe()

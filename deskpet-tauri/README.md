@@ -13,7 +13,7 @@ Tauri 2 + 零构建前端的透明桌宠，与 [deskpet-python](../deskpet-pytho
 没有 Node 的环境照样能出 exe。
 
 前置只有两样：Rust（stable，MSVC 工具链，含 VS Build Tools 的 C++ 桌面组件）+ Python 3（`prepare_assets.py` 只用标准库）。
-另外素材前提：`deskpet-python/frames_*` 已生成（帧序列不入库，见 [deskpet-python/README.md](../deskpet-python/README.md)）。
+另外素材前提：`packs\<packId>\frames\` 已生成（帧序列不入库，见 [deskpet-python/README.md](../deskpet-python/README.md)）。
 
 两条命令（在 `deskpet-tauri\` 下逐条执行）：
 
@@ -29,17 +29,15 @@ python build\prepare_assets.py --assets
 %TEMP%\deskpet-tauri-target\release\deskpet-tauri.exe
 ```
 
-**为什么第 1 条要 `--target-dir %TEMP%`**：本仓库目录带 `Everyone Deny DeleteSubdirectoriesAndFiles` ACE，
-cargo 增量构建时无法原子覆盖 `target\release\.fingerprint\*`，会直接报 `拒绝访问 (os error 5)`。
-把 target 指到 `%TEMP%`（可写）就绕开了；不带这个参数时产物会落在 `src-tauri\target\release\deskpet-tauri.exe`（本机这条路会失败）。
-想换位置：`set DESKPET_TARGET_DIR=D:\some\writable\dir`，`build.bat` 会读这个环境变量。
+**排错（不是代码问题）**：本仓库目录带 `Everyone Deny DeleteSubdirectoriesAndFiles` ACE，cargo 增量构建偶尔无法原子覆盖 `target\release\.fingerprint\*`，报 `拒绝访问 (os error 5)`。
+这是**环境（进程占用 / ACL）导致**的，不是代码缺陷；用 `--target-dir %TEMP%\deskpet-tauri-target` 或结束旧进程后重试即可。编译已由用户在本机验证通过。
 
 **`prepare_assets.py` 的两种模式**（以前只有一种、且必须在编译前跑）：
 
 | 模式 | 产物 | 什么时候跑 |
 | --- | --- | --- |
 | `--frontend` | `frontend-dist/`（index.html + src，32.2KB） | **编译前必须**（`tauri.conf.json` 的 `frontendDist` 指向它） |
-| `--assets` | `assets/`（clips.json / meta.json / state-map.json / frames_*） | **编译后、运行前**，换了素材再跑一次即可，**不需要重新编译** |
+| `--assets` | `assets/`（clips.json / manifest.json / meta.json / state-map.json / frames/<clipId>） | **编译后、运行前**，换了素材再跑一次即可，**不需要重新编译** |
 | 无参数 | 两者都做 | 等价于 `--frontend` + `--assets` |
 
 一键脚本 `build.bat` 就是 `--frontend` → `--assets` → `cargo build`：
@@ -90,15 +88,18 @@ const assetUrl = (rel) => ASSET_BASE + rel;                       // frames_dsh_
 ```
 deskpet-tauri\
 ├─ deskpet-tauri.exe          ← 3.2MB（只有程序本体）
-└─ assets\                    ← 72.9MB（15 段素材，可换可增删）
+└─ assets\                    ← 67.1MB（15 段素材，可换可增删）
    ├─ clips.json              动作清单（id/中文名/type/loop/priority/defaultIdle）
-   ├─ meta.json               每段的帧数/fps/画布尺寸/scale/offset
+   ├─ manifest.json           **pack 级画布** + 角色 + license（与 mini 同一份）
+   ├─ meta.json               每段的帧数/fps/格式/scale/offset（旧格式兼容）
    ├─ state-map.json          状态 → 动画映射（用户可改，热加载）
-   └─ frames_dsh_*\           每段一个目录，webp 帧序列
+   └─ frames/<clipId>/        每段一个目录，webp 帧序列
 ```
 
-**最小可运行组合**：`deskpet-tauri.exe` + `assets\clips.json` + `assets\meta.json` + `assets\state-map.json`
-+ 至少 `defaultIdle` 指向的那一段 `frames_*\`。只有 `clips.json` 没有帧是跑不起来的。
+**最小可运行组合**：`deskpet-tauri.exe` + `assets\clips.json` + `assets\manifest.json` + `assets\meta.json` + `assets\state-map.json`
++ 至少 `defaultIdle` 指向的那一段 `frames/<clipId>\`。只有 `clips.json` 没有帧是跑不起来的。
+
+**画布**：由 `manifest.json` 的 `canvas` 决定（默认 576×530，可换 640×456 等）；窗口高度按该 canvas 比例算，右下边距仍是 24/12。启动后会校验所有 clip 首帧尺寸，不一致时页面里列出是哪几段，不做静默缩放。
 
 **`assets\` 不存在时**不会黑窗静默：前端启动先 `invoke("assets_info")`，缺清单就切到全屏红框提示
 （写明素材根目录、缺哪个文件、补救命令 `python build\prepare_assets.py --assets`），并把窗口显示出来后再停住。
@@ -112,7 +113,7 @@ deskpet-tauri\
 | --- | --- |
 | 左键拖动 | 原生拖动（`startDragging()`），停在哪待在哪 |
 | 双击 | 有 `double_click` 状态规则就播它，没有才退回"按 `priority` 播下一个动作"；播完交叉淡化回待机**续播位** |
-| 右键 | 原生菜单：`尺寸：小/中/大`（当前档带 ✓）、`动作：<每段 displayName>`、`素材工坊…`、`退出` |
+| 右键 | 原生菜单：`尺寸：小/中/大`（当前档带 ✓）、`动作：<每段 displayName>`、`素材工坊…`、`关于素材…`、`退出` |
 | 点宠物旁边的透明区 | **穿透**：事件直达下面那个窗口，宠物不响应（见「空白处穿透」） |
 | `Esc` | 退出 |
 
@@ -148,8 +149,8 @@ deskpet-tauri\
 
 | 维度 | deskpet-python（PyQt6） | deskpet-tauri |
 | --- | --- | --- |
-| 素材 | `frames_*/` + `meta.json`，WebP q80 | **同一份**（运行期从 `assets\` 读，不编译进 exe） |
-| 帧清单 | `clips.json`（顺序/类型/名字）+ `meta.json`（帧数/fps/格式） | `assets/clips.json` + `assets/meta.json`（与 mini 同一份，`prepare_assets.py --assets` 原样复制） |
+| 素材 | `packs\<packId>\frames\<clipId>\` + `manifest.json`，WebP q80 | **同一份**（运行期从 `assets\` 读，不编译进 exe） |
+| 帧清单 | `clips.json`（顺序/类型/名字）+ `meta.json`（帧数/fps/格式）+ `manifest.json`（画布/license） | `assets/clips.json` / `manifest.json` / `meta.json`（与 mini 同一份，`prepare_assets.py --assets` 原样复制） |
 | 播放 | `QTimer` 24fps，后台线程解码，缓存 ±14 帧 | `requestAnimationFrame` 24fps，`ImageBitmap` **整段常驻** |
 | 交叉淡化 | `QPainter` opacity 250ms | 双 canvas 交叉 + CSS opacity 250ms |
 | 尺寸/锚点 | `_resize_to(max(140, 屏宽×比例))`，右下 -24/-12 | 同一算法，但物理像素定位在 Rust 侧做（避开 WebView CSS/DPI 误差） |
@@ -157,7 +158,7 @@ deskpet-tauri\
 | 拖动 | `mouseMoveEvent` 里 `move()` | `startDragging()`（由窗口管理器接管） |
 | 退出 | 菜单 / `Esc` | 菜单 / `Esc` |
 
-`clips.json` 没有直接复用 mini 那份，原因：mini 的清单只放 id/name/type/loop/priority，帧数/fps/格式散在 `meta.json` 里，且 mini 是本地 `open()` 读；前端只能 `fetch` 一个文件，所以由脚本合并成一份等价清单（字段语义一致，顺序/优先级/名字全部来自 mini）。
+mini 与 tauri 读同一份 `clips.json` / `manifest.json`，字段语义一致；tauri 的 `assets\` 只是运行期副本，换 pack 时重跑 `prepare_assets.py --assets`。
 
 ## 实测对比（同口径）
 
@@ -173,8 +174,8 @@ powershell -NoProfile -File build\bench-chart.ps1
 | 指标 | deskpet-tauri（素材外置后） | deskpet-python | 说明 |
 | --- | --- | --- | --- |
 | 仅程序本体 | **3.2MB**（单 exe，素材已不在里面；上轮内嵌形态 22.8MB） | 19.6MB（`pet.py` + 4 段帧） | exe 缩到原来的 1/7 |
-| 运行期素材目录 | 72.9MB（15 段，`assets\`，可换不编译） | 72.9MB（同 15 段 `frames_*`） | 两边素材是同一份 |
-| 分发合计 | **76.1MB**（exe + assets） | 92.5MB（本体 + 全部 15 段帧） | 上轮只有 4 段时 tauri 是 22.8MB |
+| 运行期素材目录 | 67.1MB（15 段，`assets\`，可换不编译） | 67.1MB（同 15 段 `frames/`） | 两边素材是同一份 |
+| 分发合计 | **70.3MB**（exe + assets） | 86.7MB（本体 + 全部 15 段帧） | 上轮只有 4 段时 tauri 是 22.8MB |
 | 含运行时依赖 | 989.2MB（exe + assets + WebView2 Runtime 913.1MB） | 244.9MB（本体 + PyQt6 225.3MB） | WebView2 是系统级预装，通常不算应用体积 |
 | 含完整 Python venv | — | 569.6MB | venv 含 pip/setuptools 等非必需包 |
 | 待机内存（含子进程） | 549.8MB 均值 / 593.2MB 峰值（8 进程） | **64.3MB 均值 / 67.6MB 峰值**（1 进程） | 与上轮 560.9MB 持平，差约 8.6 倍 |
@@ -185,7 +186,7 @@ powershell -NoProfile -File build\bench-chart.ps1
 | ├ WebView2 utility（网络/存储等） | 92.0MB | — | |
 | ├ WebView2 crashpad-handler | 16.7MB | — | |
 | 待机 CPU（单核） | **7.3%~13.6%**（两轮 60s 采样） | 18.5% | 与上轮 8.9% 同量级，波动来自合成器空闲帧 |
-| 首帧（进程内自计时） | 1240ms（3 次抽样 1188/1344/1456，中位 ≈1344ms） | **203ms** | 上轮内嵌形态 1023ms；多了一次磁盘读 + 自定义协议往返 |
+| 首帧（进程内自计时） | 1240ms（3 次抽样 1188/1344/1456，中位 ≈1344ms） | **333ms**（300px 宽，含启动时的首帧尺寸校验；上一轮 203ms 时未做校验） | Tauri 上轮内嵌形态 1023ms；素材外置多了一次磁盘读 + 自定义协议往返 |
 | 首帧（spawn → 窗口可见） | 1323ms | 486ms | 外部 `EnumWindows` 轮询 |
 | 稳定性 | 60s 存活、无白底/黑屏/崩溃 | 同左 | 两端截图见下 |
 
@@ -193,7 +194,7 @@ powershell -NoProfile -File build\bench-chart.ps1
 
 差异来源：
 
-- **体积**：素材外置后 exe 只剩程序本体 3.2MB（上轮 22.8MB）；分发时 exe + `assets\` 一起给，合计 76.1MB（其中 72.9MB 是 15 段素材，换系列只换这一块）。
+- **体积**：素材外置后 exe 只剩程序本体 3.2MB（上轮内嵌形态 22.8MB）；分发时 exe + `assets\` 一起给，合计 **70.3MB**（其中 67.1MB 是 15 段素材，换系列只换这一块）。
 - **内存**：差距**不是**页面泄漏，而是 WebView2 的多进程基线——browser/gpu/renderer/utility/crashpad 五个进程即使只画一个 192px 的宠物也要 ~520MB；Qt 单进程 64MB。Tauri 主进程本身只有 29MB，比 mini 还小。
 - **CPU**：Tauri 略低，因为帧位图整段常驻、绘制只是 canvas blit；mini 每帧 `QImage` 解码 + `SmoothTransformation` 缩放，这是它 18.5% 的主要来源。
 - **首帧**：Tauri 慢约 1s，一半是 WebView2 运行时初始化（本机历史 0.67~1.99s），一半是素材外置后新增的一次磁盘读 + 自定义协议往返（本轮 1.19~1.46s 对 上轮 1.02s）；mini 直接读一帧就能显示。

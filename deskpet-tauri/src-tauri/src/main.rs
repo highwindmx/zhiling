@@ -285,6 +285,9 @@ fn show_menu(
     let ws = MenuItem::with_id(&win, "workshop", "素材工坊…", true, None::<&str>)
         .map_err(|e| e.to_string())?;
     menu.append(&ws).map_err(|e| e.to_string())?;
+    let about = MenuItem::with_id(&win, "about_assets", "关于素材…", true, None::<&str>)
+        .map_err(|e| e.to_string())?;
+    menu.append(&about).map_err(|e| e.to_string())?;
     let quit = MenuItem::with_id(&win, "quit", "退出", true, None::<&str>)
         .map_err(|e| e.to_string())?;
     menu.append(&quit).map_err(|e| e.to_string())?;

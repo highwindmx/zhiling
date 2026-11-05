@@ -10,7 +10,7 @@
 2. **驱动方式必须是"阶段变化驱动"**：`token` 每来一个字就切动作一定抽搐，所以只在 `status:running`、`done`、`error`、`超时` 四个边上做转移，`token` 只用来计时（判断"等待首 token"是否超时）。
 3. **素材时长决定一切**：最短的循环 4.00s，最长 5.2s，而"等待首 token"经常只有 0.3~0.8s。所以必须引入 `minPlayMs` + "允许被打断" + "只播一次不循环" 三条规则，否则一个 5s 的动作会把后续状态全部压住。
 4. **用户配置做状态映射（不做关键词）**：把 10 个可观测状态暴露出来，用户给每个状态选一个动画；匹配逻辑由程序负责，用户不需要写规则。理由见 §9.1。
-5. **两个提醒态需要区分可观测性**：`awaiting_user` 纯客户端可派生（本轮已实现）；`needs_decision` 现有 DSH 事件源**无法**观测，需要 DSH 补 `attention` 事件（本轮先用启发式占位，标注不可靠）。
+5. **两个提醒态需要区分可观测性**：`awaiting_user` 纯客户端可派生（本轮已实现）；`needs_decision` 现有 DSH 事件源**无法**观测，需要 DSH 补 `attention` 事件（本轮不实现启发式，见 §9.5）。
 
 ---
 
@@ -391,14 +391,18 @@ def request_play(clip_id, priority, min_play_ms=0, cooldown_s=0, interruptible=T
 
 **`needs_decision`（待你决策）—— 需要 DSH 改代码**
 
-- 现状：DSH 只广播 `welcome/status/token/done/error`，**没有任何"等待用户确认/选择"的信号**，所以本轮用**启发式占位**：`done` 之后如果 AI 回复末尾是 `?/？`、或包含 `1. 2. 3.` / `[ ]` / `是否` / `要不要` 等选项特征 → 进入 `needs_decision`。**这个启发式不可靠**（反问句、教程里的列表都会误触发），默认 `enabled:false`，只在用户显式打开时生效。
-- 需要 DSH 补的事件（建议 schema，和现有事件同一条 WS 通道）：
-  ```json
-  {"v":1,"type":"attention","kind":"confirm|choice|approval",
-   "prompt":"是否继续写入 3 个文件？","options":["继续","取消"],"timeoutSec":300,"ts":1730800000000}
-  ```
-  用户响应后再发 `{"type":"attention_clear","ts":...}`，宠物据此清除提醒。
-- 播放：一次明显动作（`dsh_helpless`，`minPlayMs=1200`）→ 之后每 `intervalSec`（默认 75s，可配 60~90）**轻微提醒一次**（当前实现是重播同一个动作，后续可换成"汗滴/气泡"叠加层）；`maxTimes=3`。
+- **启发式已否决（不要再捡起来）**：上一版曾用"`done` 后 AI 回复末尾是 `?/？` 或含 `1. 2. 3.` / `是否` / `要不要`"来判断。否决理由：**误报的代价高于漏报**——反问句、教程里的列表、正常的总结都会误触发，用户会看到宠物反复做"等你拍板"的动作却根本没有待决策项，很快就不信这个提示了；而漏报只是少一个动画，DSH 正常的事件仍会驱动 `done/streaming`。所以本轮**删掉了全部启发式代码**，`heuristic.needsDecision` 配置位不再读取，`state_map.py` / `main.js` 只在**收到 `attention` 事件**时才进入该状态，没收到就完全不动。
+- DSH 最小改动清单（照这个改 `index.js` 即可）：
+  1. 在需要用户确认/选择的地方（工具审批、多选、二选一）发：
+     ```json
+     {"v":1,"type":"attention","kind":"confirm|choice|approval",
+      "prompt":"是否继续写入 3 个文件？","options":["继续","取消"],"timeoutSec":300,"ts":1730800000000}
+     ```
+  2. 用户回答后（或审批被取消/超时）发：
+     ```json
+     {"v":1,"type":"attention_clear","ts":...}
+     ```
+  3. 时机：`kind` 由 DSH 决定；`options` 可省略；`timeoutSec` 不传时宠物按 300s 处理。字段缺失时只允许 `type` 必填，其余按默认值降级。
 - 退场（必须写死，否则会卡在提醒态）：
   1. 用户响应（`user_input` / `attention_clear`）→ 清除，回 `busy`；
   2. 超时（DSH 的 `timeoutSec`，没给就用 **300s**）→ 清除，回 `idle`；
@@ -567,7 +571,7 @@ L3 显式指令  >  对话阶段事件（done/error/tool_call）  >  用户规�
 ## 10. 需要用户拍板的三个决策
 
 1. **`streaming` 播什么**：本轮默认 `工作中`（语义一致，但长循环略吵）；备选 `看手机`（安静，但容易误读成摸鱼）。改法：`state-map.json` 里改那一行的 `clipId`。
-2. **`needs_decision` 要不要开启发式**：默认 `enabled:false`（等 DSH 补 `attention` 事件）。要现在就能看到提醒效果，把它改成 `true`，但会误触发。
+2. ~~`needs_decision` 要不要开启发式~~ **已否决**：不实现启发式（误报代价高于漏报）。只等 DSH 的 `attention` 事件，见 §9.5 的最小改动清单。
 3. **`error` 播「不高兴」还是「炸毛」**：默认不高兴（炸毛留给双击的"吃惊"）；如果用户希望出错更显眼，把 `error` 换成 `dsh_shock`。
 
 ## 11. 实施顺序（本轮已完成的部分打勾）

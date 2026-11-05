@@ -25,7 +25,7 @@ except Exception:                       # 没装就退回 clip_NN，不拦主流
     lazy_pinyin = None
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(BASE)
+ROOT = os.path.dirname(os.path.dirname(BASE))
 REPO = os.path.dirname(ROOT)
 sys.path.insert(0, BASE)
 from keyer import key_frame
@@ -276,7 +276,7 @@ class SliderRow(QWidget):
 
 
 class NewPackDialog(QDialog):
-    """新建素材包：只问 packId / 角色名 / 画布，画布默认 576×530。"""
+    """新建素材包：只问 packId / 角色名 / 画布，画布默认 576×530（pack.DEFAULT_CANVAS），可改。"""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -291,11 +291,11 @@ class NewPackDialog(QDialog):
         self.sp_w = QSpinBox()
         self.sp_w.setRange(192, 1024)
         self.sp_w.setSingleStep(32)
-        self.sp_w.setValue(576)
+        self.sp_w.setValue(pack.DEFAULT_CANVAS[0])
         self.sp_h = QSpinBox()
         self.sp_h.setRange(192, 1024)
         self.sp_h.setSingleStep(32)
-        self.sp_h.setValue(530)
+        self.sp_h.setValue(pack.DEFAULT_CANVAS[1])
         row.addWidget(self.sp_w)
         row.addWidget(QLabel("×"))
         row.addWidget(self.sp_h)
@@ -306,7 +306,7 @@ class NewPackDialog(QDialog):
         lay.addLayout(form)
         tip = QLabel("为什么建议别改画布：画布是 pack 级全局参数，所有动作都按同一画布做缩放和"
                      "脚底锚点对齐。改小了以后 pack 里所有 clip 都要重抠一遍；改大了旧 clip 会被"
-                     "拉伸模糊。没有特别理由请保持 576×530。")
+                     "拉伸模糊。没有特别理由请保持默认 576×530；改了以后这个 pack 的所有 clip 都要重导。")
         tip.setWordWrap(True)
         tip.setStyleSheet("color:#c90")
         lay.addWidget(tip)
@@ -552,11 +552,11 @@ class Workshop(QWidget):
 
     def pack_conf(self):
         """pack 级输出参数（画布 / fps / 格式 / 质量）——全部来自 manifest，不在导出页暴露。"""
-        d = {"w": 576, "h": 530, "fps": 24, "fmt": "webp", "quality": 80}
+        d = {"w": pack.DEFAULT_CANVAS[0], "h": pack.DEFAULT_CANVAS[1], "fps": 24, "fmt": "webp", "quality": 80}
         try:
             m = pack.load_manifest(self.cur_pack())
             cv, fr = m.get("canvas") or {}, m.get("frames") or {}
-            d.update(w=int(cv.get("w", 576)), h=int(cv.get("h", 530)),
+            d.update(w=int(cv.get("w", pack.DEFAULT_CANVAS[0])), h=int(cv.get("h", pack.DEFAULT_CANVAS[1])),
                      fps=int(fr.get("fps", 24)), fmt=fr.get("format", "webp"),
                      quality=int(fr.get("quality", 80)))
         except Exception:
@@ -698,7 +698,7 @@ class Workshop(QWidget):
         fps = self.pack_conf()["fps"]
         try:
             if v["fps"] != fps or not v["frames"]:
-                raw = os.path.join(BASE, "raw_" + v["cid"])
+                raw = os.path.join(BASE, "..", "cache", "raw", v["cid"])
                 if os.path.isdir(raw) and v["fps"] != fps:
                     import glob
                     for f in glob.glob(os.path.join(raw, "*.png")):
@@ -737,7 +737,7 @@ class Workshop(QWidget):
         v = self.cur()
         if not v:
             return
-        probe = os.path.join(BASE, "probe_" + v["cid"])
+        probe = os.path.join(BASE, "..", "cache", "probe", v["cid"])
         try:
             files = build_frames.extract_frames(v["path"], probe, 1)
         except Exception as e:
@@ -930,7 +930,7 @@ class Workshop(QWidget):
         if bak:
             self.log("同 clipId 重抠：旧帧已备份到 %s（可回滚）" % os.path.relpath(bak, REPO))
         spec = {"id": cid, "video": v["path"], "params": self.params(),
-                "fps": c["fps"], "width": c["w"],
+                "fps": c["fps"], "width": c["w"], "height": c["h"],
                 "fmt": c["fmt"], "quality": c["quality"],
                 "crop": list(self.crop) if self.crop else None,
                 "out_dir": pack.frames_dir(pack_id, cid)}
@@ -1063,6 +1063,6 @@ if __name__ == "__main__":
     try:
         sys.exit(main())
     except Exception:
-        with open(os.path.join(BASE, "workshop.log"), "a", encoding="utf-8") as f:
+        with open(os.path.join(BASE, "..", "cache", "tmp", "workshop.log"), "a", encoding="utf-8") as f:
             f.write(traceback.format_exc() + "\n")
         raise

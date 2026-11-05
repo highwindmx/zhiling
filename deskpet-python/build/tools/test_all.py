@@ -9,8 +9,8 @@ from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication
 import pet
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OUT = os.path.join(ROOT, "build")
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+OUT = os.path.join(ROOT, "build", "cache", "tmp")
 
 pet.META = json.load(open(os.path.join(ROOT, "meta.json"), encoding="utf-8"))
 pet.CLIPS, pet.ACTIONS = pet.load_clips()

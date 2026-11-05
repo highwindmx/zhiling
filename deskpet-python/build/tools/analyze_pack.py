@@ -12,10 +12,10 @@ import numpy as np
 from PIL import Image, ImageDraw
 import imageio_ffmpeg
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 REPO = os.path.dirname(ROOT)
 SRC = os.path.join(REPO, "material", "DSMaid")
-OUT = os.path.join(ROOT, "build", "_probe2")
+OUT = os.path.join(ROOT, "build", "cache", "probe")
 SHOT = os.path.join(REPO, "docs", "screenshots")
 DARK = 38          # 亮度低于它算"近黑"
 DARK_STD = 14      # 且这一行/列足够"均匀"（不是角色自身的黑发）

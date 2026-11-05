@@ -6,7 +6,7 @@ rem 素材工坊 = 素材包编辑器：uv 优先；没有 uv 就用 .venv（两条路径都能跑，失败都
 where uv >nul 2>nul
 if not errorlevel 1 (
     echo [工坊] 用 uv run 启动（依赖由 uv.lock 保证一致）
-    uv run python build\workshop.py
+    uv run python build\tools\workshop.py
     if errorlevel 1 (
         echo.
         echo [工坊] uv run 失败，常见原因：
@@ -19,7 +19,7 @@ if not errorlevel 1 (
 
 echo [工坊] 没有找到 uv，降级到 .venv\Scripts\python.exe
 if exist ".venv\Scripts\python.exe" (
-    ".venv\Scripts\python.exe" build\workshop.py
+    ".venv\Scripts\python.exe" build\tools\workshop.py
     if errorlevel 1 (
         echo.
         echo [工坊] .venv 里的解释器跑不起来：依赖可能没装全

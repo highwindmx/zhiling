@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from keyer import key_frame
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-RAW = os.path.join(BASE, "action_raw")
+RAW = os.path.join(BASE, "..", "cache", "raw", "action")
 # 新素材水印：左上“AI生成”、右下“千问”
 WM = [(0, 0, 230, 90), (1080, 630, 1280, 720)]
 
