@@ -9,6 +9,7 @@ from PIL import Image
 from scipy import ndimage
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "workshop"))   # keyer 已迁到 workshop/
 from keyer import key_frame
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

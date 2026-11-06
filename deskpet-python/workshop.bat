@@ -1,28 +1,23 @@
 @echo off
-chcp 65001 >nul
 cd /d "%~dp0"
-
-rem 素材工坊 = 素材包编辑器：uv 优先；没有 uv 就用 .venv（两条路径都能跑，失败都会说原因）
+rem Material workshop (pack editor). Prefer uv, fall back to .venv.
+rem All visible text is ASCII on purpose: stored as ASCII bytes, so it renders
+rem identically under cmd (GBK/936), PowerShell, and after any git clone.
 where uv >nul 2>nul
 if not errorlevel 1 (
-    echo [工坊] 用 uv run 启动（依赖由 uv.lock 保证一致）
-    uv run python build\tools\workshop.py
-    if errorlevel 1 (
-        echo.
-        echo [工坊] uv run 失败，常见原因：
-        echo   - 依赖没装：先在本目录执行 uv sync
-        echo   - 仓库在共享盘/网络盘：uv 写 uv.lock 会「拒绝访问」，把仓库拷到本地磁盘再跑
-        pause
-    )
-    exit /b 0
+    echo [workshop] starting: uv run python workshop\workshop.py %*
+    uv run python workshop\workshop.py %*
+    if not errorlevel 1 exit /b 0
+    echo.
+    echo [workshop] uv run failed, falling back to .venv\Scripts\python.exe
 )
 
-echo [工坊] 没有找到 uv，降级到 .venv\Scripts\python.exe
 if exist ".venv\Scripts\python.exe" (
-    ".venv\Scripts\python.exe" build\tools\workshop.py
+    echo [workshop] starting: .venv\Scripts\python.exe workshop\workshop.py %*
+    ".venv\Scripts\python.exe" workshop\workshop.py %*
     if errorlevel 1 (
         echo.
-        echo [工坊] .venv 里的解释器跑不起来：依赖可能没装全
+        echo [workshop] the .venv interpreter failed: dependencies may be incomplete
         echo            .venv\Scripts\pip install -r requirements.txt
         pause
     )
@@ -30,9 +25,9 @@ if exist ".venv\Scripts\python.exe" (
 )
 
 echo.
-echo [工坊] 没有可用的 Python 环境，二选一：
-echo   1) 装 uv 后在本目录执行：uv sync
-echo   2) 用 pip：python -m venv .venv，再 .venv\Scripts\pip install -r requirements.txt
-echo 详见 README.md 的「安装依赖（uv 优先）」。
+echo [workshop] no Python environment found. Choose one:
+echo   1) install uv, then run: uv sync
+echo   2) pip: python -m venv .venv, then .venv\Scripts\pip install -r requirements.txt
+echo See README.md section "Build from scratch".
 pause
 exit /b 1

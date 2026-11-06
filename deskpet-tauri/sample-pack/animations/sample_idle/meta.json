@@ -1,0 +1,40 @@
+{
+  "displayName": "待机",
+  "type": "idle",
+  "loop": true,
+  "priority": 0,
+  "fps": 24,
+  "count": 96,
+  "scale": 0.6827,
+  "offset": [
+    -201,
+    37
+  ],
+  "anchor": {
+    "foot": [
+      0.5,
+      0.9962
+    ]
+  },
+  "tags": [],
+  "crop": null,
+  "source": "示例素材：复用 DSMaid idle 帧（随包仅作首启兜底）",
+  "version": 2,
+  "assetId": "sample_idle",
+  "name": "待机",
+  "canvas": {
+    "w": 576,
+    "h": 530
+  },
+  "format": "webp",
+  "origin": {
+    "pack": "sample",
+    "clipId": "sample_idle"
+  },
+  "license": {
+    "source": "DSMaid / 即梦（绿幕 mp4）",
+    "license": "AI 生成，未授权商用",
+    "author": "DSMaid",
+    "url": ""
+  }
+}

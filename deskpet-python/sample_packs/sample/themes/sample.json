@@ -1,0 +1,155 @@
+{
+  "version": 2,
+  "id": "sample",
+  "name": "示例素材（仅待机）",
+  "active": true,
+  "longIdleSec": 600,
+  "awaitingUserSec": 30,
+  "states": {
+    "double_click": {
+      "clipIds": [],
+      "fallbackClipIds": [],
+      "priority": 85,
+      "minPlayMs": 0,
+      "cooldownSec": 0,
+      "loop": false,
+      "interruptible": true,
+      "enabled": true
+    },
+    "click": {
+      "clipIds": [],
+      "fallbackClipIds": [],
+      "priority": 70,
+      "minPlayMs": 0,
+      "cooldownSec": 0,
+      "loop": false,
+      "interruptible": true,
+      "enabled": true
+    },
+    "error": {
+      "clipIds": [],
+      "fallbackClipIds": [],
+      "priority": 60,
+      "minPlayMs": 0,
+      "cooldownSec": 0,
+      "loop": false,
+      "interruptible": true,
+      "enabled": true
+    },
+    "needs_decision": {
+      "clipIds": [],
+      "fallbackClipIds": [],
+      "priority": 55,
+      "minPlayMs": 0,
+      "cooldownSec": 0,
+      "loop": false,
+      "interruptible": true,
+      "enabled": true,
+      "repeat": {
+        "mode": "once",
+        "intervalSec": 75,
+        "maxTimes": 1
+      }
+    },
+    "done": {
+      "clipIds": [],
+      "fallbackClipIds": [],
+      "priority": 45,
+      "minPlayMs": 0,
+      "cooldownSec": 0,
+      "loop": false,
+      "interruptible": true,
+      "enabled": true
+    },
+    "busy": {
+      "clipIds": [],
+      "fallbackClipIds": [],
+      "priority": 35,
+      "minPlayMs": 0,
+      "cooldownSec": 0,
+      "loop": true,
+      "interruptible": true,
+      "enabled": true
+    },
+    "focus": {
+      "clipIds": [],
+      "fallbackClipIds": [],
+      "priority": 32,
+      "minPlayMs": 0,
+      "cooldownSec": 0,
+      "loop": true,
+      "interruptible": true,
+      "enabled": true
+    },
+    "streaming": {
+      "clipIds": [],
+      "fallbackClipIds": [],
+      "priority": 30,
+      "minPlayMs": 0,
+      "cooldownSec": 0,
+      "loop": true,
+      "interruptible": true,
+      "enabled": true
+    },
+    "awaiting_user": {
+      "clipIds": [],
+      "fallbackClipIds": [],
+      "priority": 25,
+      "minPlayMs": 0,
+      "cooldownSec": 0,
+      "loop": false,
+      "interruptible": true,
+      "enabled": true,
+      "repeat": {
+        "mode": "once",
+        "intervalSec": 75,
+        "maxTimes": 1
+      }
+    },
+    "focus_break": {
+      "clipIds": [],
+      "fallbackClipIds": [],
+      "priority": 22,
+      "minPlayMs": 0,
+      "cooldownSec": 0,
+      "loop": true,
+      "interruptible": true,
+      "enabled": true
+    },
+    "long_idle_2": {
+      "clipIds": [],
+      "fallbackClipIds": [],
+      "priority": 12,
+      "minPlayMs": 0,
+      "cooldownSec": 0,
+      "loop": false,
+      "interruptible": true,
+      "enabled": true,
+      "afterSec": 1800
+    },
+    "long_idle_1": {
+      "clipIds": [],
+      "fallbackClipIds": [],
+      "priority": 10,
+      "minPlayMs": 0,
+      "cooldownSec": 0,
+      "loop": false,
+      "interruptible": true,
+      "enabled": true,
+      "afterSec": 600
+    },
+    "idle": {
+      "clipIds": [
+        "sample_idle"
+      ],
+      "fallbackClipIds": [],
+      "priority": 0,
+      "minPlayMs": 0,
+      "cooldownSec": 0,
+      "loop": true,
+      "interruptible": true,
+      "enabled": true
+    }
+  },
+  "sample": true
+}

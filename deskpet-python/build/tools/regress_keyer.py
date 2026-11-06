@@ -1,6 +1,7 @@
 """抠像复用回归：用 build_clip 以 action2 的原始参数重跑一遍，与仓库里已提交的 frames_action2 做像素级对比。"""
 import os, sys, json
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "workshop"))   # build_frames 已迁到 workshop/
 import numpy as np
 from PIL import Image
 import build_frames

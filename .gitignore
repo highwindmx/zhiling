@@ -60,7 +60,10 @@ dsh-deskpet-bridge/
 deskpet-python/build/cache/
 deskpet-python/debug.log
 deskpet-python/*.log
-harness_bridge_test.mjs
+# harness 已迁至 deskpet-python/build/tools/harness_bridge_test.mjs，纳入版本控制
+# 用户偏好（默认尺寸等）由「设置…」写入，因机器而异，不入库
+deskpet-python/config.json
+deskpet-python/config.json.migrated
 
 # ---------- 根目录的原始素材（成品与素材已放到 deskpet-python/assets 与 docs） ----------
 /*.mp4
@@ -73,3 +76,29 @@ desktop.ini
 .DS_Store
 .idea/
 .vscode/
+
+# 清理隔离区：候选文件待用户复核后再处置，不入库
+archive/quarantine-*/
+
+# 一次性验证脚本 / 中间截图的工作区（随时可整目录删除）
+_scratch/
+
+# ---------- 本地工具 / 安装残留（不入库） ----------
+# 自动化浏览器/agent 工具留下的缓存目录
+.playwright-cli/
+.workbuddy/
+# pip 嵌套解包 / 构建残留（sandbox 下常无法删除）
+pytmp/
+# 根目录 build/（playwright 等工具产出，非本仓库构建目录）
+/build/
+# 一次性打包产物
+packs.zip
+# 临时编辑备份
+*.bak_ui
+*.bak
+*~
+
+# 运行日志 / 测试缓存残留（sandbox 下常无法删除）
+**/debug.log
+pytest-cache-files-*/
+.pytest_cache/

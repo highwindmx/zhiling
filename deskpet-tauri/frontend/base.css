@@ -1,0 +1,22 @@
+/* 设置窗 / 工坊窗共用的基础样式（零构建，直接 <link>）。
+   只放两页逐字一致、且与页面语义无关的部分；各页 <style> 负责布局与私有微调。 */
+:root{
+  color-scheme: dark;
+  --bg:#15161a; --panel:#1d1f25; --panel2:#24262e; --line:#343741;
+  --txt:#e8e9ee; --dim:#9aa0ad; --accent:#7c9cff; --ok:#68d391; --warn:#f0b46b; --err:#f2777a;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{background:var(--bg);color:var(--txt);font:13px/1.5 "Microsoft YaHei","PingFang SC",system-ui,sans-serif;
+     display:flex;flex-direction:column;overflow:hidden;-webkit-user-select:none;user-select:none}
+.grow{flex:1}
+.dim{color:var(--dim)}
+/* 控件基础（边框/底色/圆角/字体），各页的 padding / 特殊宽度在自身 <style> 里覆盖 */
+button,input,select{background:var(--panel2);color:var(--txt);border:1px solid var(--line);
+     border-radius:7px;font:inherit;outline:none}
+button{cursor:pointer}
+button:hover{border-color:#4a4f5d;background:#2b2e38}
+button.primary{background:#3d5bd9;border-color:#3d5bd9;color:#fff}
+button.primary:hover{background:#4968e6}
+button:disabled{opacity:.4;cursor:default}
+button:focus,input:focus,select:focus{border-color:var(--accent)}

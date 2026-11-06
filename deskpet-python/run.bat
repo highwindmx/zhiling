@@ -1,8 +1,8 @@
 @echo off
-chcp 65001 >nul
 cd /d "%~dp0"
-rem .venv 由 uv 管理（uv sync 生成），优先用它；没有才退回全局 pythonw
-
+rem pythonw from .venv (managed by uv) first; fall back to global pythonw / python.
+rem This script itself still opens one cmd window for a few ms. For a completely
+rem silent start (no black window at all), double-click run.vbs instead.
 if exist ".venv\Scripts\pythonw.exe" (
     start "" ".venv\Scripts\pythonw.exe" pet.py %*
 ) else (
@@ -13,3 +13,5 @@ if exist ".venv\Scripts\pythonw.exe" (
         start "" pythonw pet.py %*
     )
 )
+rem exit immediately: keep the console window alive no longer than necessary
+exit /b 0

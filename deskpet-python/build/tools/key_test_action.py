@@ -3,6 +3,7 @@ import os, sys, glob
 import numpy as np
 from PIL import Image, ImageDraw
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "workshop"))   # keyer 已迁到 workshop/
 from keyer import key_frame
 
 BASE = os.path.dirname(os.path.abspath(__file__))

@@ -1,0 +1,22 @@
+{
+  "version": 2,
+  "id": "sample",
+  "name": "示例包（仅待机）",
+  "longIdleSec": 600,
+  "awaitingUserSec": 30,
+  "states": {
+    "idle": {
+      "clipIds": [
+        "sample_idle"
+      ],
+      "fallbackClipIds": [],
+      "priority": 0,
+      "minPlayMs": 0,
+      "cooldownSec": 0,
+      "loop": true,
+      "interruptible": true,
+      "enabled": true
+    }
+  },
+  "active": true
+}

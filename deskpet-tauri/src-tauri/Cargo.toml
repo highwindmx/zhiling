@@ -9,9 +9,24 @@ edition = "2021"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["tray-icon"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+webp = "0.3"
+libwebp-sys = "0.9"
+tungstenite = { version = "0.24", features = ["url"] }
+# 原生文件/目录对话框（Windows 走 IFileDialog，进程内 COM 调用）：
+# 不拉 PowerShell 子进程，避免控制台闪窗与 GBK/UTF-8 乱码。
+rfd = "0.16"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+  "Win32_Foundation",
+  "Win32_Media_MediaFoundation",
+  "Win32_System_Com",
+  "Win32_System_Com_StructuredStorage",
+  "Win32_System_Variant",
+] }
 
 [profile.release]
 panic = "abort"

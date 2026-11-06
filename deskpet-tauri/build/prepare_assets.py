@@ -1,20 +1,25 @@
 #!/usr/bin/env python3
-"""deskpet-tauri 的两件事：编译期暂存前端、运行期准备素材目录（素材不进 exe）。
+"""deskpet-tauri 的运行期素材准备脚本（纯标准库，不碰前端）。
 
-- 前端暂存（--frontend）：把 frontend/index.html + frontend/src 复制到 frontend-dist/。
-  这是 tauri.conf.json 的 frontendDist，会被编译进 exe（只有几十 KB 的 HTML/JS）。
-  这一步是编译前必须的，因为它就是 exe 里的页面本体。
-- 素材准备（--assets）：把当前 pack 的 clips.json / manifest.json / frames/<clipId> 复制到
-  deskpet-tauri/assets/。这一步**不是**编译前必须的：exe 运行时按
-  DESKPET_ASSETS 或「exe 同级的 assets/」读盘，换素材不用重新编译。
+- 前端：frontend/ 就是 tauri.conf.json 的 frontendDist，直接被编译进 exe
+  （只有几十 KB 的 HTML/JS）。改完前端直接重编即可，没有中间的暂存副本，
+  也不会出现「改了前端却像没生效」——见 README 的「改了前端如何生效」。
+- 素材准备（--assets）：把 v2 素材树整体复制到 deskpet-tauri/assets/：
+      themes/*.json                 主题（11 状态 × clipIds 动作池）
+      animations/<assetId>/meta.json + 帧（webp/png）
+      active.json                   当前主题镜像（源里没有就由运行时按 active 标记裁定）
+  这一步**不是**编译前必须的：exe 运行时按 DESKPET_ASSETS 或「exe 同级的 assets/」
+  读盘，换主题/换素材不用重新编译。
 
-clips.json 与 manifest.json 原样复制（不重命名、不合并），保证 mini 与 tauri 读到的
-画布/字段语义完全一致；打包发行时 assets/ 就是素材目录本身（见 docs/material-packs.md）。
+v2 不再有 clips.json / manifest.json / meta.json（旧格式已由 Python 侧删除），
+画布、帧数、fps、格式全部来自每段动画自己的 meta.json。
+
+注意：本脚本会整体重建 assets/（包括设置面板写过的主题文件），
+重新运行前请先备份；备份也会落在 assets/.backup/ 里（设置面板保存时自动写）。
 
 用法：
-    python build/prepare_assets.py             # 前端 + 素材都做（素材缺帧只警告）
-    python build/prepare_assets.py --frontend  # 只暂存前端（编译前必须）
-    python build/prepare_assets.py --assets    # 只准备素材（缺帧直接报错）
+    python build/prepare_assets.py             # 只准备素材
+    python build/prepare_assets.py --assets    # 只准备素材（缺元数据直接报错）
 """
 import argparse
 import json
@@ -25,46 +30,15 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 PROJECT = os.path.dirname(HERE)
 ROOT = os.path.dirname(PROJECT)
 MINI = os.path.join(ROOT, "deskpet-python")
-SRC_FRONTEND = os.path.join(PROJECT, "frontend")
-DIST = os.path.join(PROJECT, "frontend-dist")        # tauri.conf.json 的 frontendDist
+SRC_FRONTEND = os.path.join(PROJECT, "frontend")    # 即 tauri.conf.json 的 frontendDist
 ASSETS = os.path.join(PROJECT, "assets")             # exe 同级的运行期素材目录
-# packs 跟 Python 版一起放在 deskpet-python/packs/；老仓库在仓库根，按优先级回退
+# v2 packs 跟 Python 版一起放在 deskpet-python/packs/；老仓库在仓库根，按优先级回退
 PACKS = next(
     (p for p in (os.path.join(MINI, "packs"), os.path.join(ROOT, "packs")) if os.path.isdir(p)),
     os.path.join(MINI, "packs"))
-
-
-def active_pack():
-    """packs/active.json → 第一个带 clips.json 的 pack（与 pet.py / 工坊同一套规则）。"""
-    p = os.path.join(PACKS, "active.json")
-    try:
-        with open(p, encoding="utf-8") as f:
-            pid = (json.load(f) or {}).get("pack")
-        if pid and os.path.isdir(os.path.join(PACKS, pid)):
-            return pid
-    except Exception:
-        pass
-    if os.path.isdir(PACKS):
-        for d in sorted(os.listdir(PACKS)):
-            if os.path.exists(os.path.join(PACKS, d, "clips.json")):
-                return d
-    return None
-
-
-PACK_ID = active_pack()
-STATE_MAP_SRC = os.path.join(PACKS, PACK_ID, "state-map.json") if PACK_ID else ""
-
-
-def stage_frontend():
-    if os.path.isdir(DIST):
-        shutil.rmtree(DIST)
-    os.makedirs(DIST, exist_ok=True)
-    shutil.copy2(os.path.join(SRC_FRONTEND, "index.html"), DIST)
-    shutil.copytree(os.path.join(SRC_FRONTEND, "src"), os.path.join(DIST, "src"))
-    size = sum(os.path.getsize(os.path.join(b, f))
-               for b, _d, fs in os.walk(DIST) for f in fs)
-    print(f"frontend-dist: {size/1e3:.1f} KB（会打进 exe）")
-    return True
+THEMES = os.path.join(PACKS, "themes")
+ANIM = os.path.join(PACKS, "animations")
+DEFAULT_CANVAS = (576, 530)
 
 
 def image_size(path):
@@ -93,115 +67,163 @@ def image_size(path):
     raise ValueError("不认识的图片格式")
 
 
-def prepare_assets(strict):
-    meta_path = os.path.join(MINI, "meta.json")
-    clips_path = os.path.join(MINI, "clips.json")
-    manifest_src = os.path.join(PACKS, PACK_ID, "manifest.json") if PACK_ID else ""
-    for p in (meta_path, clips_path):
-        if not os.path.exists(p):
-            msg = f"缺少 {p}"
-            if strict:
-                raise SystemExit(msg)
-            print(f"[警告] {msg}，跳过素材准备（exe 运行时会要求 assets/ 存在）")
-            return False
+def _read_json(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f) or {}
+    except Exception:
+        return {}
 
-    meta = json.load(open(meta_path, encoding="utf-8"))
-    meta_clips = meta.get("clips", {})
-    clips = json.load(open(clips_path, encoding="utf-8"))
-    clips_by_id = {c["id"]: c for c in clips.get("clips", []) if c.get("id")}
-    ids = list(clips_by_id)
-    print(f"active pack = {PACK_ID}（packs/active.json）")
+
+def _aspect(canvas):
+    if isinstance(canvas, (list, tuple)) and len(canvas) >= 2:
+        return int(canvas[0] or DEFAULT_CANVAS[0]), int(canvas[1] or DEFAULT_CANVAS[1])
+    c = canvas or {}
+    return int(c.get("w") or DEFAULT_CANVAS[0]), int(c.get("h") or DEFAULT_CANVAS[1])
+
+
+def scan_assets():
+    """animations/*/meta.json → 校验列表（不复制）。"""
+    out = []
+    if not os.path.isdir(ANIM):
+        return out
+    for aid in sorted(os.listdir(ANIM)):
+        d = os.path.join(ANIM, aid)
+        if not os.path.isdir(d) or aid.startswith("."):
+            continue
+        meta = _read_json(os.path.join(d, "meta.json"))
+        if not meta:
+            out.append((aid, None, "缺 meta.json"))
+            continue
+        fmt = (meta.get("format") or "webp").lower()
+        count = int(meta.get("count") or 0)
+        frames = sorted(f for f in os.listdir(d)
+                        if os.path.isfile(os.path.join(d, f)) and not f.startswith("."))
+        if not frames:
+            out.append((aid, meta, "没有帧文件"))
+            continue
+        if count <= 0:
+            count = len(frames)
+        expected = f"f0000.{fmt}"
+        first = expected if expected in frames else frames[0]
+        try:
+            got = image_size(os.path.join(d, first))
+        except Exception as e:                       # noqa: BLE001 - 只警告，不中断
+            out.append((aid, meta, "首帧读不了：%s" % e))
+            continue
+        want = _aspect(meta.get("canvas"))
+        if got != want:
+            out.append((aid, meta, "首帧 %dx%d 与 canvas %dx%d 不一致"
+                        % (got[0], got[1], want[0], want[1])))
+            continue
+        out.append((aid, meta, ""))
+    return out
+
+
+def active_theme_id():
+    """与 pack.py 一致：themes/*.json 的 active 标记；多个为真取最近写入。"""
+    best, best_m = "", -1
+    if not os.path.isdir(THEMES):
+        return ""
+    for name in sorted(os.listdir(THEMES)):
+        if not name.endswith(".json"):
+            continue
+        p = os.path.join(THEMES, name)
+        d = _read_json(p)
+        if d.get("active") is True:
+            try:
+                m = os.stat(p).st_mtime_ns
+            except OSError:
+                m = 0
+            if m >= best_m:
+                best, best_m = (d.get("id") or name[:-5]), m
+    return best
+
+
+def prepare_assets(strict):
+    if not os.path.isdir(THEMES):
+        msg = f"缺少 {THEMES}（v2 主题目录）"
+        if strict:
+            raise SystemExit(msg)
+        print(f"[警告] {msg}，跳过素材准备")
+        return False
+
+    scanned = scan_assets()
+    if not scanned:
+        msg = f"{ANIM} 下没有任何动画资产"
+        if strict:
+            raise SystemExit(msg)
+        print(f"[警告] {msg}，跳过素材准备")
+        return False
+    bad = [(aid, why) for aid, _m, why in scanned if why]
+    if bad:
+        msg = "素材校验失败：" + "；".join("%s=%s" % x for x in bad)
+        if strict:
+            raise SystemExit(msg)
+        print("[警告] " + msg)
 
     if os.path.isdir(ASSETS):
+        # 只清空「安全的素材目录」：不能是盘符根，也不能里面有 exe（避免把运行目录删掉）
+        root = os.path.abspath(ASSETS)
+        if os.path.dirname(root) == root:
+            raise SystemExit(f"拒绝清空盘符根目录：{root}")
+        if any(n.lower().endswith(".exe") for n in os.listdir(root)):
+            raise SystemExit(f"拒绝清空含 exe 的目录：{root}")
         shutil.rmtree(ASSETS)
     os.makedirs(ASSETS, exist_ok=True)
-    shutil.copy2(clips_path, os.path.join(ASSETS, "clips.json"))
-    shutil.copy2(meta_path, os.path.join(ASSETS, "meta.json"))
-    manifest = None
-    if manifest_src and os.path.exists(manifest_src):
-        manifest = json.load(open(manifest_src, encoding="utf-8"))
-        shutil.copy2(manifest_src, os.path.join(ASSETS, "manifest.json"))
-        print(f"manifest.json <- {os.path.relpath(manifest_src, ROOT)}"
-              f"（canvas={manifest.get('canvas', {}).get('w')}x{manifest.get('canvas', {}).get('h')}）")
-        lic = manifest.get("license") or {}
-        print(f"license: {lic.get('kind', 'unknown')} / {lic.get('source') or '（未填写来源）'}")
-        if lic.get("kind", "unknown") == "unknown":
-            print("[提示] 该 pack 的 license.kind=unknown：本地运行不受影响，发布前请补全")
-    else:
-        print("[警告] 没有 manifest.json，tauri 侧画布回退 meta.json（旧 576×530）")
 
+    # 主题：整体复制（保留用户手改与未知字段）
+    shutil.copytree(THEMES, os.path.join(ASSETS, "themes"))
+    theme_ids = sorted(n[:-5] for n in os.listdir(THEMES) if n.endswith(".json"))
+    active = active_theme_id()
+    print(f"themes: {len(theme_ids)} 个（{'/'.join(theme_ids)}），active={active or '（未标记，运行时取第一个）'}")
+
+    # 动画：整目录复制，跳过 .backup / __pycache__
+    os.makedirs(os.path.join(ASSETS, "animations"), exist_ok=True)
     total = 0
-    missing = []
-    canvas = ((manifest or {}).get("canvas") or meta.get("canvas") or {})
-    cw, chh = int(canvas.get("w", 0)), int(canvas.get("h", 0))
-    bad_size = []
-    for cid in ids:
-        # dir 以 clips.json 为准（由 manifest 派生，工坊新加的 clip 也在里面）；meta.json 只作兜底
-        d = clips_by_id[cid].get("dir") or meta_clips.get(cid, {}).get("dir", "frames_" + cid)
-        # 帧目录两种位置都认：packs/<pack>/frames/<clipId>（新格式）/ deskpet-python/frames_*（旧格式）
-        src = os.path.join(PACKS, PACK_ID or "", d) if PACK_ID else ""
-        if not src or not os.path.isdir(src):
-            src = os.path.join(MINI, d)
-        if not os.path.isdir(src):
-            missing.append(cid)
+    good = 0
+    for aid, _meta, why in scanned:
+        if why:
             continue
-        dst = os.path.join(ASSETS, d)
-        shutil.copytree(src, dst)
+        src = os.path.join(ANIM, aid)
+        dst = os.path.join(ASSETS, "animations", aid)
+        shutil.copytree(src, dst, ignore=shutil.ignore_patterns(".backup", "__pycache__"))
         size = sum(os.path.getsize(os.path.join(b, f))
                    for b, _dd, fs in os.walk(dst) for f in fs)
         total += size
-        # 画布校验（只读首帧文件头）：不一致的段全部列出来，不静默缩放
-        if cw and chh:
-            try:
-                first = sorted(os.listdir(dst))[0]
-                try:                               # 有 Pillow 就用（能识别更多格式）
-                    from PIL import Image
-                    with Image.open(os.path.join(dst, first)) as im:
-                        got = im.size
-                except ImportError:                # 没有 Pillow 时退回标准库文件头解析
-                    got = image_size(os.path.join(dst, first))
-                if got != (cw, chh):
-                    bad_size.append((cid, "%dx%d" % got))
-            except Exception as e:                  # noqa: BLE001
-                bad_size.append((cid, "读不了首帧：%s" % e))
-        print(f"{cid:14s} -> {d:22s} {size/1e6:6.2f} MB")
+        good += 1
+        print(f"{aid:16s} -> animations/{aid:16s} {size/1e6:6.2f} MB")
+    print(f"assets: {good}/{len(scanned)} 段，合计 {total/1e6:.1f} MB -> {ASSETS}")
 
-    if bad_size:
-        msg = ("帧尺寸与 canvas=%dx%d 不一致：" % (cw, chh)
-               + "，".join("%s=%s" % x for x in bad_size))
-        if strict:
-            raise SystemExit(msg)
-        print("[警告] " + msg)
-
-    if os.path.exists(STATE_MAP_SRC):
-        shutil.copy2(STATE_MAP_SRC, os.path.join(ASSETS, "state-map.json"))
-        print(f"state-map.json <- {os.path.relpath(STATE_MAP_SRC, ROOT)}")
-    else:
-        print(f"[警告] 没有 {os.path.relpath(STATE_MAP_SRC, ROOT)}，运行时将用内置默认待机")
-
-    print(f"assets: {len(ids) - len(missing)}/{len(ids)} 段，合计 {total/1e6:.1f} MB -> {ASSETS}")
-    if missing:
-        msg = "以下 clip 没有帧目录（先跑 deskpet-python/build/build_*.py）：" + ", ".join(missing)
-        if strict:
-            raise SystemExit(msg)
-        print("[警告] " + msg)
-    if meta.get("canvas"):
-        print(f"canvas={meta['canvas']['w']}x{meta['canvas']['h']}（旧 meta.json）")
+    src_active = os.path.join(PACKS, "active.json")
+    if os.path.isfile(src_active):
+        shutil.copy2(src_active, os.path.join(ASSETS, "active.json"))
+        print(f"active.json <- {os.path.relpath(src_active, ROOT)}")
+    elif active:
+        # 源里没有镜像时补一份，运行时/设置都能看到唯一 active
+        with open(os.path.join(ASSETS, "active.json"), "w", encoding="utf-8") as f:
+            json.dump({"theme": active, "pack": active}, f, ensure_ascii=False, indent=2)
+            f.write("\n")
+        print(f"active.json 已生成（active={active}）")
     return True
 
 
 def main():
+    global ASSETS
     ap = argparse.ArgumentParser()
-    ap.add_argument("--frontend", action="store_true", help="只暂存前端")
     ap.add_argument("--assets", action="store_true", help="只准备素材")
+    ap.add_argument("--out", help="素材输出父目录：素材写到 <目录>/assets（通常传 exe 所在目录）；默认 <项目>/assets")
+    ap.add_argument("--packs", nargs="?", const=os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "DeskPet", "packs"),
+                    help="素材输出目录（packs 根，直接包含 themes/animations/active.json）；不带值时写 %%LOCALAPPDATA%%\\DeskPet\\packs")
     args = ap.parse_args()
-    only_frontend = args.frontend and not args.assets
-    only_assets = args.assets and not args.frontend
-    if not only_assets:
-        if not stage_frontend():
-            raise SystemExit(1)
-    if not only_frontend:
-        prepare_assets(strict=only_assets)
+    if args.packs:
+        ASSETS = os.path.abspath(args.packs)
+        print(f"packs 输出目录 -> {ASSETS}")
+    elif args.out:
+        ASSETS = os.path.join(os.path.abspath(args.out), "assets")
+        print(f"素材输出目录 -> {ASSETS}")
+    only_assets = bool(args.assets)
+    prepare_assets(strict=only_assets)
 
 
 if __name__ == "__main__":

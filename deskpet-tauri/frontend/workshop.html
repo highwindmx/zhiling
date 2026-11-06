@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>知灵桌宠 · 素材工坊</title>
+<link rel="stylesheet" href="./base.css">
+<style>
+  header{display:flex;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid var(--line);
+         background:linear-gradient(180deg,#20222a,#1a1c22);flex:none}
+  .steps{display:flex;align-items:center;gap:6px;font-size:12.5px;white-space:nowrap}
+  .steps .step{color:var(--txt)}
+  .steps .arw{color:#5a6070}
+  .vinfo{font-size:11.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .grow{flex:1}
+  .dim{color:var(--dim)}
+  .mono{font-family:Consolas,monospace}
+  button.primary{font-weight:600}
+  button.mini{padding:2px 8px;font-size:12px;border-radius:6px}
+  input[type=text],input[type=number],select{padding:4px 8px}
+  input[type=number]{width:66px}
+  input[type=range]{accent-color:var(--accent);width:100%}
+  input[type=checkbox]{accent-color:var(--accent);width:14px;height:14px;flex:none}
+  main{flex:1;display:grid;grid-template-columns:minmax(300px,31fr) minmax(0,69fr);gap:10px;padding:0 14px 12px;min-height:0}
+  .col{display:flex;flex-direction:column;gap:10px;min-height:0;min-width:0}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;min-height:0;min-width:0}
+  .card-h{display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--line);color:var(--dim);font-size:12px;flex:none}
+  .card-h b{color:var(--txt);font-size:12.5px}
+  .card-b{padding:8px 10px;display:flex;flex-direction:column;gap:7px;min-height:0}
+  .row{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+  .stage-wrap{position:relative;flex:1;min-height:0;display:flex;align-items:center;justify-content:center;
+              background:#0d0e11;border-radius:8px;overflow:hidden;padding:4px}
+  .stage-wrap canvas{max-width:100%;max-height:100%;display:block;outline:none}
+  #stage{cursor:crosshair}
+  .badge{font-size:12px;padding:1px 8px;border-radius:6px;background:#2b2e38;color:var(--dim)}
+  .badge.ok{background:#1e352a;color:#b8f0d5}
+  .badge.err{background:#3a2222;color:#ffc9c9}
+  .badge.warn{background:#3a2f1d;color:#f7d9a8}
+  .slider{display:grid;grid-template-columns:86px minmax(0,1fr) 46px;align-items:center;gap:8px;font-size:12px}
+  .slider .lbl{color:var(--dim)}
+  .slider .val{text-align:right;font-family:Consolas,monospace;color:var(--txt)}
+  .log{flex:1;min-height:56px;overflow:auto;background:#111216;border:1px solid var(--line);border-radius:8px;
+       padding:6px 8px;font:12px/1.5 Consolas,monospace;color:#c8cbd4;white-space:pre-wrap}
+  .log .e{color:var(--err)} .log .s{color:var(--ok)} .log .w{color:var(--warn)}
+  .prog{height:6px;background:#111216;border-radius:4px;overflow:hidden}
+  .prog > i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+  .hint{font-size:11px;color:#7d8492}
+  .scroll{overflow:auto;min-height:0}
+  .vlist{display:flex;flex-direction:column;gap:3px;max-height:120px;overflow:auto}
+  .vitem{display:flex;align-items:center;gap:7px;padding:3px 6px;border-radius:6px;cursor:pointer;border:1px solid transparent}
+  .vitem:hover{background:#22252e}
+  .vitem.on{border-color:var(--accent);background:#232733}
+  .vitem img{width:40px;height:24px;object-fit:cover;border-radius:4px;background:#000;flex:none}
+  .vitem .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
+  .vitem .x{background:none;border:0;color:var(--dim);cursor:pointer;font-size:14px;padding:0 4px}
+  .chip{padding:2px 9px;font-size:12px;border-radius:6px;color:var(--dim)}
+  .chip.blue{border-color:#3b4a6b}
+  .chip.red{border-color:#5a3234}
+  .chip.blue.on{border-color:#5b8cff;color:#d8e3ff;background:#1f2a44}
+  .chip.red.on{border-color:#c04a4a;color:#ffd6d6;background:#3a2222}
+  .chip.on{border-color:var(--accent);color:#cfd9ff;background:#232733}
+  .marks{font-size:11px;color:#7d8492;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .views{display:flex;gap:8px;flex:1;min-height:0}
+  .view{flex:1;display:flex;flex-direction:column;gap:3px;min-width:0;min-height:0}
+  .view .cap{font-size:11px;color:#7d8492;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #thumbBox{height:96px;flex:none;display:flex;align-items:center;justify-content:center;background:#0d0e11;
+            border:1px solid var(--line);border-radius:7px;overflow:hidden;color:#7d8492;font-size:12px}
+  #thumbBox img{max-width:100%;max-height:100%;object-fit:contain}
+  .lower{display:grid;grid-template-columns:minmax(0,55fr) minmax(0,45fr);gap:10px;min-height:132px;flex:0 1 250px}
+  .stateLine{color:var(--accent);font-size:12px;line-height:1.45;word-break:break-all}
+  .resultLine{color:var(--ok);font-size:12px;font-weight:600;line-height:1.45;word-break:break-all}
+  #advBox{display:none;flex-direction:column;gap:5px}
+  #advBox.on{display:flex}
+  #advBtn{display:flex;align-items:center;gap:6px;background:transparent;border:0;color:var(--dim);
+          font-size:12px;padding:0;cursor:pointer}
+  #advBtn:hover{color:var(--txt)}
+</style>
+</head>
+<body>
+<header>
+  <div class="steps">
+    <span class="step">① 导入视频</span><span class="arw">→</span>
+    <span class="step">② 抠像与裁边</span><span class="arw">→</span>
+    <span class="step">③ 导出</span>
+  </div>
+  <div class="grow"></div>
+  <span id="ffBadge" class="badge ok">Media Foundation 解码</span>
+</header>
+
+<main>
+  <!-- 左列：① 导入视频 / ③ 导出 -->
+  <div class="col">
+    <section class="card" id="importCard" style="flex:0 0 auto">
+      <div class="card-h"><b>① 导入视频</b><div class="grow"></div><span id="videoCount" class="dim">0 个</span></div>
+      <div class="card-b scroll">
+        <div class="row">
+          <button id="pickVideo">添加视频…</button>
+          <button id="removeVideo" class="mini">移除</button>
+        </div>
+        <div id="thumbBox"><span>选中视频后显示首帧</span></div>
+        <div id="videoInfo" class="vinfo">尚未导入视频</div>
+        <div class="vlist" id="videoList"><span class="dim">未添加</span></div>
+      </div>
+    </section>
+
+    <section class="card" id="exportCard" style="flex:1">
+      <div class="card-h"><b>③ 导出</b><div class="grow"></div><span id="exportBadge" class="badge">待命</span></div>
+      <div class="card-b scroll">
+        <div class="row" style="flex-wrap:nowrap"><span class="dim" style="width:58px;flex:none">主题</span>
+          <select id="seriesSel" style="flex:1;min-width:0"></select>
+          <button id="newSeries" class="mini" style="flex:none">新建…</button>
+        </div>
+        <div class="row"><span class="dim" style="width:58px">动画名称</span>
+          <input type="text" id="clipName" placeholder="动画名称（如「得意状」）" style="flex:1">
+        </div>
+        <div class="row"><span class="dim" style="width:58px">绑定状态</span>
+          <select id="stateSel" style="flex:1"></select>
+        </div>
+        <div class="row"><span class="dim" style="width:58px">assetId</span>
+          <input type="text" id="clipId" placeholder="ASCII，如 dsm_yawn；留空按名称自动生成" style="flex:1">
+        </div>
+        <div id="idStatus" class="hint">—</div>
+        <div class="row">
+          <input type="checkbox" id="overwrite"><label for="overwrite" class="dim">覆盖已有段</label>
+          <div class="grow"></div>
+          <button id="openOut" class="mini" title="在资源管理器里打开导出目录">打开导出目录</button>
+        </div>
+        <div class="row">
+          <button id="doExport" class="primary">开始导出</button>
+          <button id="cancelExport" class="mini" disabled>取消</button>
+        </div>
+        <div class="prog"><i id="progBar"></i></div>
+      </div>
+    </section>
+  </div>
+
+  <!-- 右列：② 预览 / 参数 + 日志 -->
+  <div class="col">
+    <section class="card" style="flex:1;min-height:0">
+      <div class="card-h"><b>② 抠像预览 · 三视图并列</b><div class="grow"></div><span id="perf" class="dim"></span></div>
+      <div class="card-b" style="flex:1;min-height:0">
+        <div class="row">
+          <label class="dim" style="display:flex;align-items:center;gap:5px">
+            <input type="checkbox" id="cbCropAuto" checked title="导入后自动扫全片裁一次；手动拖框后自动关掉">自动裁黑边
+          </label>
+          <button id="autoCrop" class="mini" title="重新跑一次自动裁边，之后再手动微调">重跑裁边</button>
+          <button class="chip on" id="toolCrop" data-mode="crop" title="拖动裁切框四条边 / 四角">裁切</button>
+          <button class="chip blue" id="toolSample" data-mode="sample" title="拖框取背景色，可叠加多个；右键删框">加取色框</button>
+          <button class="chip red" id="toolErase" data-mode="erase" title="拖框切掉角落杂物；右键删框">矩形擦除</button>
+          <button class="chip blue" id="multiSample" title="抽 3 帧四角取色，取中位数后回填">多帧取色</button>
+          <button class="chip blue" id="autoSample" title="对当前预览帧四角取背景色">当前帧取色</button>
+          <button class="chip red" id="clearMarks" title="清空全部取色框 + 矩形擦除框">清空标注</button>
+        </div>
+        <div class="marks" id="marks">裁切 全帧 ｜ 取色框 0 ｜ 擦除框 0 ｜ 拖框即重算 · 右键删框</div>
+
+        <div class="views">
+          <div class="view">
+            <div class="cap">抠图前（源帧）· 抠像参数此视图不跑</div>
+            <div class="stage-wrap"><canvas id="cvRaw"></canvas></div>
+          </div>
+          <div class="view">
+            <div class="cap">抠图后 · 可交互（右键删框）</div>
+            <div class="stage-wrap"><canvas id="stage"></canvas></div>
+          </div>
+          <div class="view">
+            <div class="cap">alpha 通道（白=不透明）</div>
+            <div class="stage-wrap"><canvas id="cvAlpha"></canvas></div>
+          </div>
+        </div>
+
+        <div class="row">
+          <button id="btnPlay" class="mini" title="连续播放预览（空格键也可）">播放</button>
+          <button id="btnPause" class="mini" title="暂停播放（空格键也可）">暂停</button>
+          <input type="range" id="seek" min="0" max="1" step="0.01" value="0" style="flex:1;min-width:100px">
+          <span id="frameLabel" class="mono dim" style="width:104px;text-align:right">0 / 0</span>
+        </div>
+        <div class="row">
+          <label class="dim" style="display:flex;align-items:center;gap:5px" title="只影响预览，不影响导出">
+            <input type="checkbox" id="cbSolid"> 实色底
+          </label>
+          <span id="srcLabel" class="dim" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">预览来源：—</span>
+        </div>
+      </div>
+    </section>
+
+    <div class="lower">
+      <section class="card">
+        <div class="card-h"><b>参数调节</b><div class="grow"></div><span class="hint">默认 136 / 18 / 34 / 0.30 / 0.55 / 0.16 / 0.75 / 1.0</span></div>
+        <div class="card-b scroll" style="flex:1">
+          <div class="slider"><span class="lbl">饱和度下限</span><input type="range" id="sat_lo" min="0" max="1" step="0.01" value="0.30"><span class="val" data-for="sat_lo">0.30</span></div>
+          <div class="slider"><span class="lbl">饱和度上限</span><input type="range" id="sat_hi" min="0" max="1" step="0.01" value="0.55"><span class="val" data-for="sat_hi">0.55</span></div>
+          <div class="slider"><span class="lbl">羽化 blur</span><input type="range" id="blur" min="0" max="4" step="0.1" value="1"><span class="val" data-for="blur">1.0</span></div>
+          <button id="advBtn" title="色相 / 地板 / 去溢色 / 预设">▸ 更多参数（色相 / 地板 / 去溢色 / 预设）</button>
+          <div id="advBox">
+            <div class="row"><span class="dim">背景色相 <b id="hueRefVal" class="mono">136.0</b>°</span>
+              <input type="range" id="hue_ref" min="0" max="360" step="0.5" value="136.0" style="flex:1">
+            </div>
+            <div class="slider"><span class="lbl">色相内阈值</span><input type="range" id="hue_in" min="0" max="60" step="0.5" value="18"><span class="val" data-for="hue_in">18.00</span></div>
+            <div class="slider"><span class="lbl">色相外阈值</span><input type="range" id="hue_out" min="2" max="120" step="0.5" value="34"><span class="val" data-for="hue_out">34.00</span></div>
+            <div class="slider"><span class="lbl">alpha 地板</span><input type="range" id="floor" min="0" max="0.6" step="0.01" value="0.16"><span class="val" data-for="floor">0.16</span></div>
+            <div class="slider"><span class="lbl">去溢色</span><input type="range" id="despill" min="0" max="1" step="0.01" value="0.75"><span class="val" data-for="despill">0.75</span></div>
+            <div class="slider"><span class="lbl">收边 erode</span><input type="range" id="erode" min="0" max="3" step="1" value="1"><span class="val" data-for="erode">1</span></div>
+            <div class="row">
+              <input type="checkbox" id="keepMain" checked><label for="keepMain" class="dim">只保留最大连通块（去水印/光晕）</label>
+              <div class="grow"></div>
+              <button id="resetParams" class="mini">恢复默认</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-h"><b>日志</b><div class="grow"></div><span id="bgStat" class="dim">—</span></div>
+        <div class="card-b" style="flex:1;min-height:0">
+          <div class="stateLine" id="stateLine">参数 → 结果：等待载入视频</div>
+          <div class="resultLine" id="resultLine"></div>
+          <div class="log" id="log">就绪。</div>
+        </div>
+      </section>
+    </div>
+  </div>
+</main>
+<script type="module" src="src/workshop.js"></script>
+</body>
+</html>

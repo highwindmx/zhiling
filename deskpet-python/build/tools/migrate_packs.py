@@ -15,7 +15,9 @@ import glob, json, os, shutil, sys, time
 BASE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(BASE))              # deskpet-python/
 REPO = os.path.dirname(ROOT)              # 仓库根
-PACKS = os.path.join(ROOT, "packs")
+sys.path.insert(0, BASE)
+import pack as packlib  # noqa: E402 - 素材目录统一解析（环境变量 / config / Documents / 就地）
+PACKS = packlib.packs_root()
 LEGACY = os.path.join(PACKS, ".legacy")
 CANVAS = {"w": 576, "h": 530}
 FRAMES_CONF = {"format": "webp", "quality": 80, "fps": 24}

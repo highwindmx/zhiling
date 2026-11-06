@@ -1,259 +1,362 @@
-# 桌宠 · 蓝鲸女仆（deskpet-tauri）
+# DeskPet · Tauri 版
 
-Tauri 2 + 零构建前端的透明桌宠，与 [deskpet-python](../deskpet-python/)（PyQt6）**行为等价**：同一份素材、同一套尺寸/锚点换算、同样的拖动 / 双击轮播动作 / 原生右键菜单 / Esc 退出。这个目录本轮的目标是"跑起来 + 可测"，不含 DSH 对话桥接、托盘动画、多角色、AI 功能。
+透明置顶的桌面桌宠：Rust（Tauri 2）+ 手写静态前端，**不使用 npm / vite**，`frontend/` 里的
+HTML/CSS/JS 直接作为 `frontendDist` 打包进 exe（几十 KB）；动画素材**运行期外置**，不塞进 exe。
 
-## 从零构建（`Cargo.toml` 在哪、要跑哪几条命令）
+行为语义以 Python 版 `deskpet-python`（`pet.py` + `state_map.py`）为准，素材格式为 v2
+（`themes/` + `animations/` + `active.json`）。
 
-**先说位置：`Cargo.toml` 在 `deskpet-tauri\src-tauri\Cargo.toml`，不在 `deskpet-tauri\` 根目录。**
-这是 Tauri 的固定布局：前端目录（`frontend/`）和 Rust crate（`src-tauri/`）平级，`Cargo.toml` 跟 crate 走。
-所以直接 `cd deskpet-tauri && cargo build --release` 会报 `could not find Cargo.toml`，必须进 `src-tauri\` 或加 `--manifest-path`。
-
-**前端不需要 `npm install` / `npm run build`**：`frontend/` 是零构建的 ES Module（没有 vite/webpack 编译步骤），
-`package.json` 里的 `@tauri-apps/cli` 只在 `npm run build`（打 NSIS 安装包）或 `tauri dev` 时才用得到。
-没有 Node 的环境照样能出 exe。
-
-前置只有两样：Rust（stable，MSVC 工具链，含 VS Build Tools 的 C++ 桌面组件）+ Python 3（`prepare_assets.py` 只用标准库）。
-另外素材前提：`deskpet-python\packs\<packId>\frames\` 已生成（帧序列不入库，见 [deskpet-python/README.md](../deskpet-python/README.md)）。`prepare_assets.py` 按 `deskpet-python\packs\` → 仓库根 `packs\` 的顺序找第一个存在的。
-
-两条命令（在 `deskpet-tauri\` 下逐条执行）：
-
-```bat
-:: 1) 编译（前端 32KB 会打进 exe；素材不进 exe，见下节「素材外置」）
-cd src-tauri
-cargo build --release --target-dir %TEMP%\deskpet-tauri-target
-
-:: 2) 准备运行期素材（把 deskpet-python 的帧拷到 deskpet-tauri\assets，可随时重跑）
-python build\prepare_assets.py --assets
-
-:: 3) 运行（run.bat 会自动把 DESKPET_ASSETS 指到 deskpet-tauri\assets）
-%TEMP%\deskpet-tauri-target\release\deskpet-tauri.exe
-```
-
-**排错（不是代码问题）**：本仓库目录带 `Everyone Deny DeleteSubdirectoriesAndFiles` ACE，cargo 增量构建偶尔无法原子覆盖 `target\release\.fingerprint\*`，报 `拒绝访问 (os error 5)`。
-这是**环境（进程占用 / ACL）导致**的，不是代码缺陷；用 `--target-dir %TEMP%\deskpet-tauri-target` 或结束旧进程后重试即可。编译已由用户在本机验证通过。
-
-**`prepare_assets.py` 的两种模式**（以前只有一种、且必须在编译前跑）：
-
-| 模式 | 产物 | 什么时候跑 |
-| --- | --- | --- |
-| `--frontend` | `frontend-dist/`（index.html + src，32.2KB） | **编译前必须**（`tauri.conf.json` 的 `frontendDist` 指向它） |
-| `--assets` | `assets/`（clips.json / manifest.json / meta.json / state-map.json / frames/<clipId>） | **编译后、运行前**，换了素材再跑一次即可，**不需要重新编译** |
-| 无参数 | 两者都做 | 等价于 `--frontend` + `--assets` |
-
-一键脚本 `build.bat` 就是 `--frontend` → `--assets` → `cargo build`：
-
-```bat
-build.bat            :: release
-build.bat debug      :: debug
-```
-
-`build.bat` 的产物同样在 `%TEMP%\deskpet-tauri-target\release\deskpet-tauri.exe`；它不会替你 `git push`，也不会打安装包（见「踩过的坑」第 8 条）。
-素材准备（第 2 步）失败**不会中断编译**——素材已经不在 exe 里了，只影响运行，脚本会打印警告和补救命令。
-
-## 运行
-
-```bat
-src-tauri\target\release\deskpet-tauri.exe
-:: 或根目录 run.bat：给受限会话准备一个可写的 WebView2 用户目录
-```
-
-需要系统已安装 **WebView2 Runtime**（Win11 通常自带；本机为 156.0.4314.58）。窗口默认中档 = 屏幕可用宽 15%，贴在工作区右下角（逻辑边距 24 / 12）。
-
-## 素材外置（帧和 mp4 不进 exe）
-
-以前 `prepare_assets.py` 把帧拷进 `frontend-dist`，再由 `tauri-build` 通过 `include_bytes!` 之类的机制编译进 exe——
-结果是**每换一套素材就得重新编译**，而且 exe 被素材撑到 22.8MB。现在改成运行时从磁盘读。
-
-**协议**：自定义 URI scheme `deskpet://`，在 Windows/WebView2 上落地成 `http://deskpet.localhost/<相对路径>`。
-
-```js
-const ASSET_BASE = `${location.protocol}//deskpet.localhost/`;   // 页面自己是 http://tauri.localhost
-const assetUrl = (rel) => ASSET_BASE + rel;                       // frames_dsh_idle/f0000.webp
-```
-
-**为什么不选 `convertFileSrc` / 内置 asset 协议**：内置 asset 协议的 scope 必须写死在 `tauri.conf.json`（编译期固定），
-而素材目录要能换（多 pack、用户自建素材包）；`file://` 在 WebView2 里会被直接拦掉。
-自定义协议由 Rust 侧自己实现（`main.rs` 的 `serve_asset`），路径校验、后缀白名单都在代码里，**`tauri.conf.json` 不需要开任何 scope**。
-
-**素材根目录的解析顺序**（`main.rs` 的 `asset_root()`）：
-
-1. 环境变量 `DESKPET_ASSETS`（绝对路径；多 pack 并存或调试时用，`run.bat` 会自动设置）
-2. exe 同级的 `assets\`（发布形态）
-
-**安全边界**：`serve_asset` 只接受素材目录内的相对路径，拒绝 `..`、`\`、绝对路径，只放行
-`json / webp / png / jpg / jpeg / svg / mp4` 七种后缀；越界返回 403，缺失返回 404 并写进日志（`DESKPET_LOG`）。
-
-**分发形态**：一个 exe + 一个 `assets` 目录，拷到同一个目录就能跑：
-
-```
-deskpet-tauri\
-├─ deskpet-tauri.exe          ← 3.2MB（只有程序本体）
-└─ assets\                    ← 67.1MB（15 段素材，可换可增删）
-   ├─ clips.json              动作清单（id/中文名/type/loop/priority/defaultIdle）
-   ├─ manifest.json           **pack 级画布** + 角色 + license（与 mini 同一份）
-   ├─ meta.json               每段的帧数/fps/格式/scale/offset（旧格式兼容）
-   ├─ state-map.json          状态 → 动画映射（用户可改，热加载）
-   └─ frames/<clipId>/        每段一个目录，webp 帧序列
-```
-
-**最小可运行组合**：`deskpet-tauri.exe` + `assets\clips.json` + `assets\manifest.json` + `assets\meta.json` + `assets\state-map.json`
-+ 至少 `defaultIdle` 指向的那一段 `frames/<clipId>\`。只有 `clips.json` 没有帧是跑不起来的。
-
-**画布**：由 `manifest.json` 的 `canvas` 决定（默认 576×530，可换 640×456 等）；窗口高度按该 canvas 比例算，右下边距仍是 24/12。启动后会校验所有 clip 首帧尺寸，不一致时页面里列出是哪几段，不做静默缩放。
-
-**`assets\` 不存在时**不会黑窗静默：前端启动先 `invoke("assets_info")`，缺清单就切到全屏红框提示
-（写明素材根目录、缺哪个文件、补救命令 `python build\prepare_assets.py --assets`），并把窗口显示出来后再停住。
-
-**代价（首帧）**：首帧多了一次磁盘读 + 自定义协议的 HTTP 往返，本机实测 1.19~1.46s（3 次抽样中位数 ≈1.34s），
-上一轮内嵌形态是 1.02s（同一台机历史区间 0.67~1.99s）。差异在上轮波动区间内但中位数偏高，如实记录；换素材不再重新编译是主要收益。
-
-## 交互
-
-| 操作 | 效果 |
-| --- | --- |
-| 左键拖动 | 原生拖动（`startDragging()`），停在哪待在哪 |
-| 双击 | 有 `double_click` 状态规则就播它，没有才退回"按 `priority` 播下一个动作"；播完交叉淡化回待机**续播位** |
-| 右键 | 原生菜单：`尺寸：小/中/大`（当前档带 ✓）、`动作：<每段 displayName>`、`素材工坊…`、`关于素材…`、`退出` |
-| 点宠物旁边的透明区 | **穿透**：事件直达下面那个窗口，宠物不响应（见「空白处穿透」） |
-| `Esc` | 退出 |
-
-三档 = 屏幕可用宽的 10% / 15% / 30%，下限 140 逻辑像素（与 mini 的 `max(140, ...)` 一致）；切档保持窗口左上角，只有启动时贴右下角。
-
-## 空白处穿透（点宠物=正常，点旁边透明区=直达下层窗口）
-
-**做法**：window 级开关（Rust `set_ignore_cursor_events`，Win32 是 `WS_EX_TRANSPARENT`）+ 前端降采样 alpha 掩码判定指针是否在宠物身上，50ms 轮询一次光标（`cursor_local` 命令返回窗口内坐标），命中状态变化时才 `invoke("set_click_through")`。
-
-**为什么不做 `WM_NCHITTEST` 子类化**：
-1. Tauri 2 不暴露窗口过程，得自己 `SetWindowSubclass` 并把 WNDPROC 里的每个像素判定接到 JS 掩码上——要么每帧把掩码 IPC 到 Rust（24fps × ~8KB），要么在 Rust 里再实现一遍降采样，两份实现必然漂移；
-2. 先在 PyQt6 里试过同一思路（`QWidget.nativeEvent` 收 `WM_NCHITTEST`），实测 **Qt6 在原生窗口层就把这条消息处理掉了**，`nativeEvent` 一次都收不到（同时 `super().nativeEvent()` 会 `0xC000041D` 崩），说明"框架级命中测试"这条路在两边都不稳。
-`set_ignore_cursor_events` 是官方 API、语义就是"整个窗口不吃鼠标"，配合掩码只在指针越过轮廓时切换，代价是一次 IPC + 一次 `SetWindowLong`，没有逐像素跨进程通信。
-
-**掩码**：`MASK_DIV=2`（192×177 → 96×88）、`MASK_ALPHA_MIN=8`；离屏 canvas 用 `drawImage` 缩小后 `getImageData` 取 alpha；**按帧缓存**（key = `clip:idx`，LRU 600），`MASK_REFRESH_MS=150` 节流，只有帧序号变了才重建。所以待机段第一圈 96 次构建之后就不再重建，稳态是 0 次/秒；重建一次 ≈ 一次 96×88 的 `drawImage` + 一次 `getImageData`（同口径在 mini 侧实测 0.95~1.12ms/次，见下）。
-
-**实测**（构建产物 exe + 最大化 WinForms 对照窗口，真实光标 + `mouse_event` 注入，日志在 `build/bench-logs/`）：
-
-| 检查 | 结果 |
-| --- | --- |
-| 宠物身体单击 | 底层窗口**收不到** `mousedown`（0 行新增） |
-| 宠物身体双击 | 前端收到 `dblclick` 并切动作（`e2e-tauri.log`） |
-| 宠物身体按下并拖动 | 窗口原点 `(1063,562) → (1018,526)`，`startDragging` 生效 |
-| 紧邻透明区（身体右 2px 外）单击 | 底层窗口**收到** `mousedown`（0→1 行） |
-| 窗口四角空白 | `WindowFromPoint` 返回下面的 IDE 窗口，不是宠物 |
-| 边缘 ±2px | `edge+2` 归宠物；`edge-2` 已在掩码外——**偏保守**（宁可多算 2px 给宠物，也不误判穿透） |
-
-`MASK_DIV=2` 的量化误差最多 2 逻辑像素，所以"1~2px 内不误判"是靠"向内取整"保证的：掩码按 2×2 块合并，块内只要有一个不透明像素整块算命中。
-
-**局限**：轮询间隔 50ms，指针从透明区快速划到宠物身上时最坏有 50ms 的"这一段仍穿透"窗口（表现为第一下点击可能漏到下层窗口）；要消掉得改成 `WM_NCHITTEST` 或 `mouseenter` 级别的低延迟钩子，本轮没做。
-
-## 与 deskpet-python 的差异
-
-| 维度 | deskpet-python（PyQt6） | deskpet-tauri |
-| --- | --- | --- |
-| 素材 | `deskpet-python\packs\<packId>\frames\<clipId>\` + `manifest.json`，WebP q80 | **同一份**（运行期从 `assets\` 读，不编译进 exe） |
-| 帧清单 | `clips.json`（顺序/类型/名字）+ `meta.json`（帧数/fps/格式）+ `manifest.json`（画布/license） | `assets/clips.json` / `manifest.json` / `meta.json`（与 mini 同一份，`prepare_assets.py --assets` 原样复制） |
-| 播放 | `QTimer` 24fps，后台线程解码，缓存 ±14 帧 | `requestAnimationFrame` 24fps，`ImageBitmap` **整段常驻** |
-| 交叉淡化 | `QPainter` opacity 250ms | 双 canvas 交叉 + CSS opacity 250ms |
-| 尺寸/锚点 | `_resize_to(max(140, 屏宽×比例))`，右下 -24/-12 | 同一算法，但物理像素定位在 Rust 侧做（避开 WebView CSS/DPI 误差） |
-| 右键菜单 | Qt 原生 `QMenu` | Tauri 原生 `Menu` + `popup_menu`（不用 HTML 菜单，避免被 192px 窗口裁切） |
-| 拖动 | `mouseMoveEvent` 里 `move()` | `startDragging()`（由窗口管理器接管） |
-| 退出 | 菜单 / `Esc` | 菜单 / `Esc` |
-
-mini 与 tauri 读同一份 `clips.json` / `manifest.json`，字段语义一致；tauri 的 `assets\` 只是运行期副本，换 pack 时重跑 `prepare_assets.py --assets`。
-
-## 实测对比（同口径）
-
-测量脚本：[build/bench.py](build/bench.py)（体积/内存/CPU/首帧）、[build/bench-chart.ps1](build/bench-chart.ps1)（出图）。
-
-```bat
-python build\bench.py --seconds 60
-powershell -NoProfile -File build\bench-chart.ps1
-```
-
-条件：同窗口尺寸（中档 15% = 192×177 逻辑像素，物理 288×266）、同素材、待机循环采样 60s、Windows 11 本机（逻辑 1280×800 / 物理 1920×1200，150%）。
-
-| 指标 | deskpet-tauri（素材外置后） | deskpet-python | 说明 |
-| --- | --- | --- | --- |
-| 仅程序本体 | **3.2MB**（单 exe，素材已不在里面；上轮内嵌形态 22.8MB） | 19.6MB（`pet.py` + 4 段帧） | exe 缩到原来的 1/7 |
-| 运行期素材目录 | 67.1MB（15 段，`assets\`，可换不编译） | 67.1MB（同 15 段 `frames/`） | 两边素材是同一份 |
-| 分发合计 | **70.3MB**（exe + assets） | 86.7MB（本体 + 全部 15 段帧） | 上轮只有 4 段时 tauri 是 22.8MB |
-| 含运行时依赖 | 989.2MB（exe + assets + WebView2 Runtime 913.1MB） | 244.9MB（本体 + PyQt6 225.3MB） | WebView2 是系统级预装，通常不算应用体积 |
-| 含完整 Python venv | — | 569.6MB | venv 含 pip/setuptools 等非必需包 |
-| 待机内存（含子进程） | 549.8MB 均值 / 593.2MB 峰值（8 进程） | **64.3MB 均值 / 67.6MB 峰值**（1 进程） | 与上轮 560.9MB 持平，差约 8.6 倍 |
-| ├ 主进程 | 29.0MB | 64.3MB（全部） | Tauri 壳本身比 Qt 进程小 |
-| ├ WebView2 browser | 174.4MB | — | Chromium 浏览器进程基线 |
-| ├ WebView2 gpu-process | 126.9MB | — | 合成/纹理（上轮 154.9MB） |
-| ├ WebView2 renderer | 110.8MB | — | 页面 + 帧位图（上轮 92.8MB，素材从 4 段涨到 15 段） |
-| ├ WebView2 utility（网络/存储等） | 92.0MB | — | |
-| ├ WebView2 crashpad-handler | 16.7MB | — | |
-| 待机 CPU（单核） | **7.3%~13.6%**（两轮 60s 采样） | 18.5% | 与上轮 8.9% 同量级，波动来自合成器空闲帧 |
-| 首帧（进程内自计时） | 1240ms（3 次抽样 1188/1344/1456，中位 ≈1344ms） | **333ms**（300px 宽，含启动时的首帧尺寸校验；上一轮 203ms 时未做校验） | Tauri 上轮内嵌形态 1023ms；素材外置多了一次磁盘读 + 自定义协议往返 |
-| 首帧（spawn → 窗口可见） | 1323ms | 486ms | 外部 `EnumWindows` 轮询 |
-| 稳定性 | 60s 存活、无白底/黑屏/崩溃 | 同左 | 两端测试截图只在本地留档（`build\screenshots\`，不入库） |
-
-> 测试/验证截图一律不入库、不上传 GitHub；体积/内存对比图、桌面透明效果、右键菜单等截图仅本地 `build\screenshots\` 留档。
-
-差异来源：
-
-- **体积**：素材外置后 exe 只剩程序本体 3.2MB（上轮内嵌形态 22.8MB）；分发时 exe + `assets\` 一起给，合计 **70.3MB**（其中 67.1MB 是 15 段素材，换系列只换这一块）。
-- **内存**：差距**不是**页面泄漏，而是 WebView2 的多进程基线——browser/gpu/renderer/utility/crashpad 五个进程即使只画一个 192px 的宠物也要 ~520MB；Qt 单进程 64MB。Tauri 主进程本身只有 29MB，比 mini 还小。
-- **CPU**：Tauri 略低，因为帧位图整段常驻、绘制只是 canvas blit；mini 每帧 `QImage` 解码 + `SmoothTransformation` 缩放，这是它 18.5% 的主要来源。
-- **首帧**：Tauri 慢约 1s，一半是 WebView2 运行时初始化（本机历史 0.67~1.99s），一半是素材外置后新增的一次磁盘读 + 自定义协议往返（本轮 1.19~1.46s 对 上轮 1.02s）；mini 直接读一帧就能显示。
-
-## 放桌面上的效果
-
-实测结论（截图不入库，本地 `build\screenshots\` 留档）：
-
-- 窗口裁剪：透明、无白底、无边框；
-- 整屏：贴在右下角，按 canvas 比例缩放；
-- 原生右键菜单：18 个动作 +「切换待机」「打开工坊」「缩放」「关于素材…」「退出」。
-
-## 踩过的坑
-
-1. **cargo 增量构建 `拒绝访问 (os error 5)`**：仓库目录带 `Everyone Deny DeleteSubdirectoriesAndFiles`，cargo 覆盖 `.fingerprint` 失败。解法是 `--target-dir %TEMP%\deskpet-tauri-target`（本轮的实测也是这样构建的）。
-2. **透明窗口白闪**：`tauri.conf.json` 里 `visible: false`，前端解出首帧、画到 canvas 之后才调 `show_window`；同时 `shadow: false`、`decorations: false`。本机实测**没有**出现 1px 白边，也没有白闪。
-3. **透明区域仍然吃鼠标**：第一轮没做穿透时，矩形窗口会截获透明像素上的点击。穿透的做法与实测见上一节；顺带确认了一件事：`WindowFromPoint` 在 `WS_EX_TRANSPARENT` 的窗口上会**跳过**它，所以"点透明区"能不能落到下层，用这个 API 就能判定，不需要真的派发事件。
-4. **WebView2 GPU 进程内存暴涨（791MB）**：一开始待机每循环 96 帧都 `createImageBitmap` + `close()`，Chromium 的纹理回收有延迟，GPU 进程从 553MB 涨到 873MB。改成**整段预载并保留**后 GPU 稳定在 ~155MB，renderer ~93MB。
-5. **动作播完回待机卡顿数秒**：切段时把待机位图也释放了，回待机要重解 96 帧。改为切段只释放上一段动作、待机段常驻（`dropOtherClips([IDLE_ID, id])`），回待机是瞬时的。
-6. **HTML 右键菜单被窗口裁切**：192px 宽的无边框窗口放不下菜单，改用 Tauri 原生 `Menu` + `popup_menu`（菜单可以溢出窗口，靠近屏幕底部时会自动向上翻）。
-7. **真实鼠标注入时好时坏**：早先 `SetCursorPos` / `SendInput` 全部失效，只能退回 CDP 派发事件；穿透这一轮里注入恢复过一次（四项点击/拖动检查全 PASS，见上一节表格），之后再测又全部失效——判定是**会话被锁屏**（截屏只能拿到锁屏页、`SetCursorPos` 返回 0）。所以点击类证据只采到了那一次成功运行的日志，进程内行为另外用 `SendMessage(WM_LBUTTONDBLCLK)` 验证过。
-8. **NSIS 安装包没打出来**：`npm run build` 需要从 GitHub 下载 NSIS 3.13 + `nsis_tauri_utils.dll`，受限网络下两次都 `timeout: global`；手工把 NSIS 与 dll 放进 `%LOCALAPPDATA%\tauri\NSIS` 后仍被 tauri-cli 判为"目录缺文件"并重下。所以本轮的安装包体积为 N/A——单文件 exe 拷走即可运行，不依赖安装包。
-
-## 已知限制
-
-- 无托盘、无单实例、无开机自启（与 mini 保持一致，连开两次会有两只）。
-- 穿透靠 50ms 轮询，指针快速越过轮廓时最坏漏 50ms（见「空白处穿透」）；未做多角色 / AI / 自动更新（本轮范围外）。
-- 待机内存受 WebView2 多进程基线影响，短期不会低于 ~450MB。
-- 只在 Windows 11 本机验证；macOS / Linux 未测。
-- 首帧 ~1.2s（本机观测 1.19~1.46s，较内嵌形态多一次磁盘读 + 自定义协议往返），比 mini 慢；如需更快可见，可把首帧改成内联占位图（本轮未做）。
-- 素材外置后 `assets\` 必须和 exe 一起分发；找不到时程序会显示红框报错而不是自己找。多角色/多 pack 并存只做到"用 `DESKPET_ASSETS` 指一个目录"，还没有切换 UI。
-
-## 目录结构
+## 目录
 
 ```
 deskpet-tauri/
-├─ build.bat                   一键：暂存前端 → 准备 assets → cargo build（失败可见、不吞错）
-├─ run.bat                     启动（自动设 DESKPET_ASSETS，含 WebView2 用户目录兜底）
-├─ frontend/                   前端源码（零构建，ES Module）
-│  ├─ index.html               两层 canvas 的透明骨架 + 缺素材红框
-│  └─ src/main.js              播放器 / 缓存 / 拖动 / 菜单 / 状态映射
-├─ frontend-dist/              构建输入（不入库）：prepare_assets.py --frontend 产出，32KB
-├─ assets/                     运行期素材（不入库）：prepare_assets.py --assets 产出
-├─ src-tauri/                  Rust crate（Cargo.toml 在这里，不在项目根）
-│  ├─ build.bat                仅 cargo build（老脚本，保留给「已在 crate 目录里」的场景）
-│  ├─ src/main.rs              show_window / set_tier / show_menu / quit_app
-│  ├─ tauri.conf.json          无边框/透明/置顶/跳任务栏/visible:false
-│  └─ icons/                   程序图标
-├─ build/
-│  ├─ prepare_assets.py        --frontend 暂存前端 / --assets 准备运行期素材
-│  ├─ bench.py                 体积/内存/CPU/首帧同口径测量
-│  ├─ bench-chart.ps1          对比图（System.Drawing）
-│  ├─ extract.py               源视频 → 无损透明帧（换素材时才用）
-│  ├─ make_icon.py             生成图标
-│  └─ probe/                   抠像试色卡
-├─ tools/                      旧流程脚本（从 mp4 重建帧 / 早期内存测量，已被 bench.py 取代）
-└─ docs/screenshots/           实测截图与对比图
+├─ frontend/                 # 手写前端（无构建步骤，就是 frontendDist）
+│  ├─ index.html             # 主窗口：两层 canvas + 提示条
+│  ├─ settings.html          # 设置窗
+│  ├─ workshop.html          # 素材工坊窗
+│  ├─ base.css               # 设置/工坊窗共用的基础样式
+│  └─ src/{main.js, settings.js, workshop.js, shared.js}
+├─ src-tauri/
+│  ├─ src/main.rs            # 窗口/托盘/设置窗/工坊窗/主题读写/外部状态入口
+│  ├─ src/dsh.rs             # DSH 广播订阅（只读，断线自动重连）
+│  ├─ src/workshop.rs        # 素材工坊（抠像/裁边/导出）后端
+│  ├─ tauri.conf.json        # frontendDist=../frontend
+│  ├─ capabilities/default.json   # 窗口 main + settings + workshop
+│  └─ icons/icon.ico
+├─ build/prepare_assets.py   # 准备运行期素材（纯标准库；不碰前端）
+└─ assets/                   # 运行期素材（--assets 产出，已忽略）
 ```
 
-## 许可证
+## v2 素材布局（运行期外置）
 
-代码沿用仓库根目录的 [Apache License 2.0](../LICENSE)；`material/` 与帧序列为 AI 生成素材，不在代码许可范围内。
+exe 读取素材（packs）的优先级（第一个存在的胜出）：
+
+1. 环境变量 `DESKPET_PACKS`（绝对路径）
+2. 设置窗「连接」页里配置的 `packsDir`（存在 `%LOCALAPPDATA%\DeskPet\config.json`）
+3. `%LOCALAPPDATA%\DeskPet\packs`（默认位置，与 exe 放哪无关）
+4. exe 同级的 `assets/`（旧发布形态，兼容）
+
+```
+packs/
+├─ themes/maid-basic.json      # 一个主题 = 13 个状态 × 动作池
+├─ themes/maid-dsh.json
+├─ animations/<assetId>/       # 一段动画一个目录
+│  ├─ meta.json                # id/name/fps/count/canvas/format/loop/priority/type
+│  └─ f0000.webp … fNNNN.webp  # 帧（webp 为主，也兼容 png/jpg）
+└─ active.json                 # {"theme": "<id>", "pack": "<id>"} 当前主题镜像
+```
+
+主题文件要点（`themes/<id>.json`）：
+
+- `states.<state>.clipIds`：**顺序轮播池**。1 段时按 `loop` 决定是否循环；多段时每段播完推进游标。
+- `states.<state>.fallbackClipIds`：池内素材缺失时的兜底。
+- 每状态还可带 `enabled` / `priority` / `afterSec` / `minPlayMs` / `cooldownSec` /
+  `loop` / `interruptible` / `repeat`（`repeat` 仅对 `awaiting_user`、`needs_decision` 生效）。
+- 状态集合固定 13 个：`idle`、`long_idle_1`、`long_idle_2`、`awaiting_user`、`busy`、`streaming`、
+  `done`、`needs_decision`、`error`、`click`、`double_click`、`focus`、`focus_break`
+  （没有绑定的状态合法，行为是保持当前画面；`focus` / `focus_break` 未绑定时自动回落 `busy` / `idle`）。
+- 「使用中」主题由各主题文件里的 `active` 标记裁定（mtime 兜底保证唯一），`active.json` 只是镜像。
+- 素材里已不再有旧的 `clips.json` / `manifest.json` / 状态映射文件（旧格式已在 Python 侧删除）；
+  画布尺寸、帧数、fps、格式全部来自每段动画自己的 `meta.json`。
+
+## 术语
+
+- **素材包**：`packs` 根目录那一整包（`config.json` + `themes/` + `animations/` + 素材），可以包含多个主题。
+- **主题**：一套「状态 → 动画」映射（`themes/<id>.json` + `animations/<id>/`）。界面与提示一律称「主题」，不再用「系列」。
+
+## 获取与安装素材包
+
+素材**不进代码仓库**，而是单独打包上传分发（例如附在 release 的 zip 里）：仓库里只有程序、
+前端和构建脚本，clone 下来直接跑是看不到动画的。
+
+安装步骤：
+
+1. 下载素材压缩包（zip）。
+2. 解压到 **`%LOCALAPPDATA%\DeskPet\packs`**（在资源管理器地址栏粘贴
+   `%LOCALAPPDATA%\DeskPet\packs` 回车即可到达；目录不存在就先新建 `DeskPet\packs`）。
+3. 解压完直接双击 `deskpet-tauri.exe`，exe 放在哪个目录都可以。
+
+> **不要解出 `packs\packs\...` 多套一层。** 压缩包里应该直接是 `themes\`、`animations\`、
+> `active.json`；解压后 `%LOCALAPPDATA%\DeskPet\packs\themes\*.json` 必须能直接看到。
+> 若多套了一层，等于素材根目录里没有 `themes\`，启动会弹「启动失败」框。
+
+素材也可以放在别处：设置窗「连接」页的「素材目录」里浏览选择一个目录（写进
+`config.json` 的 `packsDir`），或用环境变量 `DESKPET_PACKS` 指定；两者都优先于默认位置。
+为兼容旧发布形态，exe 同级的 `assets\` 仍会被识别（解析顺序见上一节）。
+
+解压后的目录结构（`%LOCALAPPDATA%\DeskPet\packs`）：
+
+```
+packs/
+├─ themes/                     # 【必需】至少一个 *.json（否则自检拦下）
+│  ├─ maid-basic.json          # 一个主题 = 13 个状态 × 动作池
+│  └─ maid-dsh.json
+├─ animations/                 # 【必需】目录本身必须存在（可先为空）
+│  └─ <assetId>/               # 主题里 clipIds 引用的每一段
+│     ├─ meta.json             # 【必需】id/name/fps/count/canvas/format…
+│     └─ f0000.webp … fNNNN.webp   # 【必需】帧，数量要与 meta.json 的 count 一致
+└─ active.json                 # 【可选】当前主题镜像 {"theme": "...", "pack": "..."}
+                               # 缺失时按 themes/*.json 里的 active 标记裁定，切主题会重建
+```
+
+要点：
+
+- `themes/*.json` 与 `animations/<assetId>/` 的对应关系是**按 id 引用**：主题里写了
+  `clipIds: ["dsm_idle"]`，就必须有 `animations/dsm_idle/meta.json` + 帧；缺素材的那段会被跳过，
+  池为空的状态保持当前画面（`focus` / `focus_break` 未绑定则回落 `busy` / `idle`）。
+- 帧格式以 webp 为主，也兼容 png/jpg；画布尺寸、帧数、fps 全部来自 `meta.json`，不写死在程序里。
+- 设置面板里改过的主题会写回 `packs/themes/<id>.json`，自动备份到 `packs/.backup/`。
+
+### 验证装好了没
+
+1. 双击 `deskpet-tauri.exe`：能看到桌宠窗口（首次约 0.2~0.7s），待机动画在动；
+2. 托盘/右键 →「设置」，在「状态与动画」页看到主题下拉里有素材包里的主题，左侧 13 个状态
+   带首帧缩略图与绑定数量；
+3. 日志 `%LOCALAPPDATA%\DeskPet\deskpet.log` 里应出现
+   `packs_root=...\DeskPet\packs source=local exists=true themes=true animations=true`，
+   随后有 `boot theme=... assets=... idle=...` 与 `clip_start id=... loop=...`。
+
+### 常见问题
+
+| 现象 | 原因 | 处理 |
+| --- | --- | --- |
+| 弹「知灵桌宠 · 启动失败」，日志 `fatal`，退出码 1 | 素材根目录里没有 `themes\` / `animations\` / 主题 JSON | 多为解压层级错（`packs\packs\themes`），把内层内容移到 `packs\` 根下 |
+| 有桌宠但不动 / 待机空白 | `idle` 池为空：主题引用的动画目录缺失或 `meta.json` 的 id 对不上 | 核对 `animations/<assetId>/`，日志里看 `clip_start` 是否出现 |
+| 设置窗看不到主题 | `packsDir` 指向了错误目录（如指向了 `packs\themes`） | 设置 →「连接」页把「素材目录」改成 `...\DeskPet\packs` 再保存 |
+| 改了设置但重启又变回去 | `%LOCALAPPDATA%\DeskPet\config.json` 不可写或被独占 | 检查文件权限；程序用「临时文件 + 原子替换」写回，权限不足会在日志里报错 |
+| 换了素材但没生效 | 素材根被缓存到进程内 | 重启 exe；改 `packsDir` 保存后会自动重载 |
+
+## 准备素材
+
+```powershell
+python build/prepare_assets.py              # 只准备素材（等同 --assets）
+python build/prepare_assets.py --packs      # 素材生成到 %LOCALAPPDATA%\DeskPet\packs（默认位置）
+python build/prepare_assets.py --packs D:\MyPacks   # 生成到指定 packs 根（直接含 themes/animations/active.json）
+python build/prepare_assets.py --assets     # 只准备素材到仓库内 assets/（旧布局/调试用）
+python build/prepare_assets.py --assets --out <exe 所在目录>  # 素材生成到 <该目录>/assets
+```
+
+- `--packs` 不带值时写 `%LOCALAPPDATA%\DeskPet\packs`；带值时该参数就是**素材根本身**
+  （脚本直接在其中生成 `themes/`、`animations/`、`active.json`，不会再套一层）。
+- `--out` 传的是**父目录**，脚本在其中生成 `assets/`（只重建这个 `assets/` 子目录，绝不清空父目录）。
+- 源目录默认 `../deskpet-python/packs/`，找不到则回退仓库根的 `packs/`。
+- `--assets` / `--packs` 会**整体重建**目标目录（设置面板里改过的主题会被覆盖，备份在 `.backup/`）；
+  为防误删，目标是盘符根目录或目录里含 `*.exe` 时脚本会直接拒绝。
+- 换主题/换素材不需要重新编译，重启 exe 即可（或保存一次 `packsDir` 触发重载）。
+
+## 运行期配置与日志
+
+- 配置与 Python 版**共用同一个文件**：`%LOCALAPPDATA%\DeskPet\config.json`（与素材目录无关，
+  换素材不丢设置）。键名与 Python 侧一致：
+
+  | 键 | 类型 | 默认 | 说明 |
+  | --- | --- | --- | --- |
+  | `tier` | string | `"中"` | 尺寸档位：`小` / `中` / `大` |
+  | `remindHold` | bool | `true` | 完成 / 出错 / 待决策时持续播放，直到点击桌宠 |
+  | `packsDir` | string | `""` | 素材根目录；空串 = 按解析顺序取默认位置 |
+  | `pomodoro.enabled` | bool | `true` | 番茄钟总开关（关掉会停掉正在跑的计时） |
+  | `pomodoro.workMin` | number | `25` | 专注时长（1~180 分钟） |
+  | `pomodoro.breakMin` | number | `5` | 休息时长（1~60 分钟） |
+
+- 写入方式是「读-改-写」：先读现有文件 → 深度合并本次修改 → 写 `config.json.tmp` 并 `sync`
+  → 原子重命名替换。文件里 Python 版写入的其它键（含嵌套对象里的未知键）原样保留，不会被清掉。
+- 旧版 `deskpet-python\config.json` 的迁移由 Python 侧负责；Tauri 版只读共用文件，不做迁移。
+- 日志默认追加写 `%LOCALAPPDATA%\DeskPet\deskpet.log`（`DESKPET_LOG=<文件路径>` 可覆盖），
+  记录启动 pid/版本、`config_path`、素材根与来源、主题、状态切换、`clip_start`、菜单、外部输入。
+- **启动失败不再静默**：素材根缺失（无 `assets/`、`themes/*.json` 或 `animations/`）时弹原生
+  错误框「知灵桌宠 · 启动失败」、日志写 `fatal ...`、退出码 `1`；WebView2 运行时缺失或
+  Tauri 启动失败同样弹框 + 写日志。`/state` 端口被占用只记一行 `state_http bind ... 失败`，不退出。
+- 素材通过自定义协议 `deskpet://localhost/`（Windows 映射为 `http://deskpet.localhost/`）读取，
+  只放行 `json/webp/png/jpg/jpeg/svg/mp4` 后缀并禁止 `..`。
+
+## 外部状态入口
+
+两种来源都会以 `state-in` 事件投递到前端状态机。
+
+1. **HTTP**：默认 `http://127.0.0.1:8765/state`，**只绑 127.0.0.1**。
+
+   ```powershell
+   # 查询
+   curl http://127.0.0.1:8765/state
+   # {"ok":true,"playing":"dsm_idle","state":"idle"}
+
+   # 投递状态（三种 body 都接受）
+   curl -X POST http://127.0.0.1:8765/state -H "Content-Type: application/json" -d '{"state":"done","message":"编译完成"}'
+   curl -X POST http://127.0.0.1:8765/state -d 'done'
+   ```
+
+   `POST` body 为 JSON 对象时支持 `state` / `message` / `priority` / `ttlSec` 等字段；
+   也接受纯字符串或整段文本。`DESKPET_STATE_PORT=0` 关闭服务，改端口同理。
+
+2. **状态文件**：`DESKPET_STATE_FILE=<路径>` 时每 500ms 轮询，**内容变化**（mtime+size）才投递；
+   启动时首读只作基线，不会补播历史状态。
+
+## 交互
+
+- 左键拖动移动窗口（`startDragging`）；短按（<400ms、位移 <4px）触发 `click` 状态。
+- 双击触发 `double_click`：该状态有绑定就按池轮播；零绑定且当前是 `idle` 时回退到
+  「按优先级轮播一段动作」（v2 里 11 条规则恒存在，不做回退的话双击会像没反应）。
+- 右键：原生菜单（HTML 菜单会被无边框窗口裁切），只有 `尺寸 ▸` 与 `隐藏`；打开菜单算一次
+  用户输入，会清掉提醒态常驻。
+- 空白穿透：前端按 alpha 掩码 50ms 轮询光标位置，命中不透明像素才接收事件（`set_ignore_cursor_events`）；
+  hover 命中时页面把光标设为手型。
+- `Esc` 退出。
+- 完成 / 出错 / 待决策（`HOLD_STATES`）在「提醒状态常驻」开启时一直播对应状态动画，直到用户
+  点击桌宠或从托盘/右键操作；关闭时按 `ttl`/`afterSec` 回落到 `idle`。
+
+## 托盘
+
+- 菜单：显示/隐藏、`尺寸 ▸`（小/中/大三档，屏幕宽度 10% / 15% / 30%）、`主题 ▸`（切换即写
+  `active` 标记 + `active.json` 镜像并热重载）、`番茄钟 ▸`、动作工坊、设置、退出。
+- `番茄钟 ▸`：第一行是状态（如「专注中 · 剩余 24:59」），下面是「开始专注 / 暂停（暂停后变
+  「继续」）/ 停止」，到点后第一行变成「专注结束 · 点击开始休息」，点桌宠或再点开始进入下一阶段。
+  总开关与时长在设置窗「提醒」页。
+- 双击托盘图标切换显示/隐藏。
+- 隐藏后窗口从任务栏/桌面消失但进程仍在；从托盘恢复会暂停→恢复播放。
+
+## 番茄钟
+
+- 默认 25 分钟专注 + 5 分钟休息，时长与开关写在 `config.json` 的 `pomodoro.{enabled,workMin,breakMin}`。
+- 计时用单调时钟（`Instant` deadline + 剩余量），系统时间被改不会漂移；500ms 刷新一次剩余时间。
+- 阶段切换推外部状态：专注 `focus`、休息 `focus_break`（与 Python 侧键名一致）。
+  主题里没绑这两个状态的动画时自动回落 `busy` / `idle`，日志有 `外部状态 focus 未绑定 → 回落 busy`。
+- 阶段结束推 `done` 提醒（常驻，直到点击桌宠），点击后进入下一阶段（专注 ↔ 休息）。
+
+## 设置窗
+
+`frontend/settings.html` + `src/settings.js`，深色、顶栏页签分页：
+
+- 顶部只有标题 + 页签：**状态与动画 / 行为 / 提醒 / 连接**；右侧仍保留「尺寸」下拉与
+  「提醒状态常驻」勾选（这两个是全局开关，不随页签切换）。保存/关闭固定在底部右侧。
+- **状态与动画**页：最上方是「主题」下拉 + 重命名（先选主题，再看/改该主题的绑定）；下面是
+  13 个状态的列表（可拖拽或 ↑↓ 调整顺序，顺序即优先级，保存时按 `(n-1-i)*10` 重算 `priority`），
+  带启用勾选与首帧缩略图；右栏是选中状态的动作池（每段可预览、上移、下移、移除；「从动作库添加」
+  弹窗，「新建动画」调用 Python 版工坊）。
+- **行为**页：尺寸档位说明、交互说明（双击/单击/右键/悬停）。
+- **提醒**页：番茄钟总开关与专注/休息时长、当前计时状态、提醒常驻说明。
+- **连接**页：素材目录（可浏览选择，留空 = 默认位置）+ 当前生效目录与校验、`/state` 端口与最近
+  外部状态、日志路径。
+- 底部保存：写 `packs/themes/<id>.json`（保留未知字段、强制 `version: 2`、备份到 `packs/.backup/`），
+  同时把 `tier` / `remindHold` / `packsDir` / `pomodoro` 合并进共用 `config.json`。
+
+## 构建
+
+前置：Rust 工具链、Python 3（仅用于 `prepare_assets.py`；运行时不需要）。
+
+```powershell
+cd src-tauri
+cargo build --release --target-dir "$env:TEMP\deskpet-target"
+# 或正式打包安装器：cargo tauri build --target-dir "$env:TEMP\deskpet-target"
+```
+
+### 图标
+
+`src-tauri/icons/` 由 `build/make_icons.py` 生成（复刻 Python 版 `make_icon.py`：`#6D4BD6`
+圆角矩形 + 白「宠」字），每个尺寸独立渲染（小尺寸按倍数超采样后缩回，不放大糊图），
+颜色/像素与 `deskpet-python/assets/icon.ico` 的对应尺寸逐像素一致。
+
+```powershell
+uv run --project ..\deskpet-python python build\make_icons.py
+```
+
+产物：`16/20/24/32/48/64/128/256/512.png`、`128x128@2x.png`(256)、`icon.png`(512)、
+`Square*Logo.png`、`StoreLogo.png`、`icon.ico`（内嵌 16/20/24/32/48/64/128/256 共 8 档，
+托盘与资源管理器共用）。`tauri.conf.json` 的 `bundle.icon` 已列全这些文件。
+
+### 本仓库的 ACL 坑（重要）
+
+`src-tauri` 及其子目录带 `Everyone: Deny DeleteSubdirectoriesAndFiles`，`tauri-build` 在
+`gen/schemas` / 权限文件生成时会报 `拒绝访问 (os error 5)`；**仅把 `--target-dir` 指到临时目录
+并不够**。已验证可行的绕行办法：把编译必需文件复制到仓库外再构建。
+
+需要复制的最小集合：
+
+```
+src/  capabilities/  icons/  Cargo.toml  Cargo.lock  build.rs  tauri.conf.json
+gen/schemas/          # 若存在
+frontend/             # 前端源（直接是 frontendDist，跟随复制即可）
+```
+
+```powershell
+$dst = "$env:TEMP\deskpet-build"
+robocopy . $dst /MIR /XD target assets .backup
+cd $dst\src-tauri
+cargo build --release --target-dir "$env:TEMP\deskpet-build-target"
+```
+
+### 构建完怎样双击就能跑
+
+exe **不内嵌素材**（只内嵌前端），但素材也不再要求放在 exe 同级：装到默认位置
+`%LOCALAPPDATA%\DeskPet\packs` 后，exe 放哪个目录都能跑。
+
+```powershell
+# 1. 构建（用临时 target 避开 ACL；产物在 $env:TEMP\deskpet-build-target\release\deskpet-tauri.exe）
+cargo build --release --manifest-path "$env:TEMP\deskpet-build\src-tauri\Cargo.toml" `
+  --target-dir "$env:TEMP\deskpet-build-target"
+# 3. 素材装到默认位置（不带值时就是 %LOCALAPPDATA%\DeskPet\packs）
+python build\prepare_assets.py --packs
+# 4. 把 exe 拷到任意目录（这里以 D:\DeskPet 为例），双击即可
+New-Item -ItemType Directory -Force D:\DeskPet | Out-Null
+Copy-Item "$env:TEMP\deskpet-build-target\release\deskpet-tauri.exe" D:\DeskPet\
+```
+
+运行所需的只有两处：
+
+```
+%LOCALAPPDATA%\DeskPet\packs\     # 素材（必需）
+├─ themes\*.json
+├─ animations\<assetId>\meta.json + fNNNN.webp
+└─ active.json                   # 可选，缺失会自动重建
+D:\DeskPet\deskpet-tauri.exe      # 程序，放哪都行
+```
+
+起来后会先看到桌宠窗口（约 0.2~0.7s），托盘图标在 Win11 默认收进「隐藏的图标」溢出区，
+点任务栏托盘的小箭头才看得到（可拖出来固定）。素材缺失时会被自检拦下：弹
+「知灵桌宠 · 启动失败」框、退出码 1、日志记 `fatal`（先查 `packs_root=... source=...` 那行）。
+如果确实想沿用旧形态，也可以把素材生成到 exe 同级：`python build\prepare_assets.py --assets --out D:\DeskPet`
+（解析顺序里 exe 同级 `assets\` 排最后兜底）。
+
+### 改了前端却像没生效
+
+`frontend/` 直接就是编译期嵌入的 `frontendDist`：改完 `frontend/` 直接用 `cargo build` 重编即可，
+**不需要再跑任何「暂存前端」步骤**（早期版本有 `frontend-dist/` 中间副本，现已去掉）。但要注意——
+cargo 并不总能感知 `frontend/` 目录变化，所以有时要强制本 crate 重编，确保输出里出现
+`Compiling deskpet-tauri`：
+
+```powershell
+# 任选其一，确保输出里出现 Compiling deskpet-tauri
+(Get-Item src-tauri\build.rs).LastWriteTime = Get-Date
+# 或 cargo clean -p deskpet-tauri --target-dir ...
+```
+
+否则 exe 里跑的还是旧 JS（典型症状：页面白屏、控制台报旧版本的 `SyntaxError`、`__deskpetPick` 未定义）。
+
+## 环境变量
+
+| 变量 | 作用 |
+| --- | --- |
+| `DESKPET_PACKS` | 素材根目录绝对路径（优先于设置里的 `packsDir` 与默认位置） |
+| `DESKPET_STATE_PORT` | `/state` HTTP 端口，默认 `8765`，`0` 关闭 |
+| `DESKPET_STATE_FILE` | 外部状态文件路径，500ms 轮询（内容变化才投递） |
+| `DESKPET_WORKSHOP` | 已废弃：Tauri 版内置素材工坊（src/workshop.rs + workshop.html），不再外拉 `workshop.bat` |
+| `DESKPET_LOG` | 日志文件路径（追加写），默认 `%LOCALAPPDATA%\DeskPet\deskpet.log` |
+
+## 与 Python 版的差异
+
+- **DSH 桥接已移植**：`src/dsh.rs` 是只读 WebSocket 订阅（与 `dsh-deskpet-bridge` 同一份广播），
+  断线指数退避自动重连；设置窗的「DSH 链路」状态灯就是它的前端。改 `dshPort` 保存后已会自动重连。
+- **素材工坊已内置**：`src/workshop.rs` + `workshop.html` 是原生窗口，抠像/裁边/导出全部在 Rust 侧完成，
+  不再外拉 Python 版 `workshop.bat`。托盘/设置里的「素材工坊」直接开本窗。
+- 双击回退只在 `idle` 且 `double_click` 零绑定时生效（Python 旧逻辑是恒真判断，v2 下会静默）。
+- 其余状态机语义（池游标轮播、多段逐段推进、单段 loop、冷却/占用回滚、TTL、两级 long idle、
+  `done → awaiting_user`、提醒态常驻、`force` 清除、按池内是否在播补齐）与 `state_map.py` 对齐。
+
+## 排错
+
+- 启动黑屏/无动画：先看 `%LOCALAPPDATA%\DeskPet\deskpet.log`（或 `DESKPET_LOG` 指定的文件）里的
+  `packs_root=... source=... exists=... themes=... animations=...`，再确认是否出现
+  `clip_start id=... loop=...` 与 `boot theme=... assets=... idle=...`；没有 `idle`
+  说明待机池为空。出现 `fatal 找不到素材目录` 说明素材根解析错了（见「获取与安装素材包」）。
+- 设置窗打开白屏：确认 `frontend/settings.html` 存在（直接是 frontendDist 源），且
+  `capabilities/default.json` 的 `windows` 含 `settings`。
+- 构建报 `LNK1104`：上一次运行的应用进程仍占用 exe，结束进程或换新的 `--target-dir`。
