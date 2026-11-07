@@ -1,22 +1,20 @@
-"""托盘/窗口图标：紫色圆角矩形 + 黑体「宠」字，逐尺寸独立渲染，写多尺寸 .ico。
+"""托盘/窗口图标：紫色圆角矩形 + 黑体白色「灵」字，逐尺寸独立渲染，写多尺寸 .ico。
 
 想改样式只动这三个常量：
     BG_COLOR      背景紫（现在是 #6D4BD6）
     RADIUS_RATIO  圆角半径占边长的比例（0.22 ≈ 256px 时 56px）
-    TEXT          中间的字（现在是「宠」）
-想改字色：TEXT_COLOR（默认白色）/ TEXT_COLOR_BLACK（黑字版本）
+    TEXT          中间的字（现在是「灵」，白色）
 
 用法：
     uv run python build/tools/make_icon.py
 产出：
-    assets/icon.ico               白字多尺寸 16/20/24/32/48/64/128/256
-    assets/icon.png               白字 256×256
-    assets/icon_black_text.ico    黑字多尺寸（深色任务栏/浅紫底可选）
-    assets/icon_black_text.png    黑字 256×256
+    assets/icon.ico               多尺寸 16/20/24/32/48/64/128/256
+    assets/icon.png               256×256
     build/cache/probe/tray_icon_16.png / _32.png / _256.png   自检预览（不入库）
 
-为什么每个尺寸单独画：256 画完再缩小，16px 的「宠」会糊成灰块；
+为什么每个尺寸单独画：256 画完再缩小，16px 的「灵」会糊成灰块；
 这里每个尺寸按自己的像素网格算字号、超采样 8×（≤32px）后 LANCZOS 落回目标尺寸。
+参数必须与 deskpet-tauri/build/make_icons.py 完全一致（同尺寸逐像素一致）。
 """
 import io
 import os
@@ -31,9 +29,8 @@ PROBE = os.path.join(ROOT, "build", "cache", "probe")
 
 BG_COLOR = "#6D4BD6"       # 中等明度紫：白字对比 ~6:1，浅色/深色任务栏都能看见
 RADIUS_RATIO = 0.22        # 256 边长时圆角 56px；16px 时 3.5px，缩小后仍是圆角不是方形
-TEXT = "宠"
+TEXT = "灵"
 TEXT_COLOR = "#FFFFFF"
-TEXT_COLOR_BLACK = "#141414"
 TEXT_HEIGHT_RATIO = 0.74   # 字高占可用高度 72~78% 的中间值
 
 SIZES = (16, 20, 24, 32, 48, 64, 128, 256)
@@ -64,7 +61,7 @@ def supersample(size):
 
 
 def render(size, fg, font_path):
-    """在 size×size 的透明画布上独立绘制圆角矩形 + 居中「宠」。"""
+    """在 size×size 的透明画布上独立绘制圆角矩形 + 居中「灵」。"""
     ss = supersample(size)
     s = size * ss
     img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
@@ -139,15 +136,13 @@ def build_set(fg, ico_path, png_path, previews=()):
 
 def main():
     white = (os.path.join(ASSETS, "icon.ico"), os.path.join(ASSETS, "icon.png"))
-    black = (os.path.join(ASSETS, "icon_black_text.ico"), os.path.join(ASSETS, "icon_black_text.png"))
     build_set(TEXT_COLOR, white[0], white[1], previews=(
         (16, os.path.join(PROBE, "tray_icon_16.png")),
         (32, os.path.join(PROBE, "tray_icon_32.png")),
         (256, os.path.join(PROBE, "tray_icon_256.png")),
     ))
-    build_set(TEXT_COLOR_BLACK, black[0], black[1])
-    print("\n色值：底 %s，白字 %s / 黑字 %s；圆角 %.0f%%"
-          % (BG_COLOR, TEXT_COLOR, TEXT_COLOR_BLACK, RADIUS_RATIO * 100))
+    print("\n色值：底 %s，白字 %s；圆角 %.0f%%"
+          % (BG_COLOR, TEXT_COLOR, RADIUS_RATIO * 100))
 
 
 if __name__ == "__main__":

@@ -149,7 +149,7 @@ def main():
     nid.uFlags = 0x1 | 0x2 | 0x4          # NIF_MESSAGE | NIF_ICON | NIF_TIP
     nid.uCallbackMessage = 0x0400 + 0x21  # WM_APP+33
     nid.hIcon = hicon
-    nid.szTip = "知灵桌宠 ctypes 探针（10 秒）"
+    nid.szTip = "智灵桌宠 ctypes 探针（10 秒）"
 
     sh32.Shell_NotifyIconW.argtypes = [wt.DWORD, ctypes.POINTER(NOTIFYICONDATAW)]
     sh32.Shell_NotifyIconW.restype = wt.BOOL
@@ -162,7 +162,7 @@ def main():
         n.uFlags = flags
         n.uCallbackMessage = 0x0400 + 0x21
         n.hIcon = hicon_
-        n.szTip = "知灵桌宠 ctypes 探针（10 秒）"
+        n.szTip = "智灵桌宠 ctypes 探针（10 秒）"
         ctypes.set_last_error(0)
         r = sh32.Shell_NotifyIconW(0, ctypes.byref(n))
         log("NIM_ADD[%s] hwnd=%s hicon=%s flags=0x%x -> %s last_error=%s"

@@ -256,7 +256,7 @@ R_REPS = [
 R_MAIN_START = "def main():"
 R_MAIN_END = 'if __name__ == "__main__":'
 R_MAIN_NEW = '''def main():
-    ap = argparse.ArgumentParser(description="知灵素材工坊")
+    ap = argparse.ArgumentParser(description="智灵素材工坊")
     ap.add_argument("--clip", default="", help="启动后定位到已有成品段 assetId（从设置面板跳转）")
     ap.add_argument("--state", default="", help="从设置带过来的目标状态：生成完自动绑定到该状态")
     ap.add_argument("--pack", default="", help="目标主题 id（沿用旧参数名，值是 packs/themes/<id>.json）")

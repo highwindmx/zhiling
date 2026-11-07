@@ -52,7 +52,7 @@ def load_app_icon() -> QIcon:
 
 TIERS = {"小": 0.10, "中": 0.15, "大": 0.30}   # 占可用屏幕宽度的比例（中=原来默认值的一半）
 DEFAULT_TIER = "中"
-# 配置统一由 packlib 解析：%LOCALAPPDATA%\DeskPet\config.json（与 Tauri 共用），
+# 配置统一由 packlib 解析：%LOCALAPPDATA%\ZhiLing\config.json（与 Tauri 共用），
 # DESKPET_CONFIG 可覆盖；旧 deskpet-python\config.json 首次访问时自动合并迁移。
 
 
@@ -240,10 +240,13 @@ EXTS = {}          # 每段实际使用的帧后缀："webp" 或 "png"
 ACTIONS = []       # 动作 clip 的 id，按优先级排序
 IDLE_ID = "idle"
 LOG_PATH = None
+LOG_ENABLED = False
 VERBOSE = False
-# ---- 多系列：当前主题由 packs/themes/*.json 的 active 字段决定（唯一真相）-----
+LOG_MAX_BYTES = 2 * 1024 * 1024         # 单文件上限 2 MB；归档固定为 pet.log.1（保留 1 份）
+_ROTATE_WARNED = False
+# ---- 多主题：当前主题由 packs/themes/*.json 的 active 字段决定（唯一真相）-----
 # 素材目录只由 packlib 统一解析：DESKPET_PACKS → config.json:packsDir →
-# %LOCALAPPDATA%\DeskPet\packs → deskpet-python/packs → 仓库根/packs。
+# %LOCALAPPDATA%\ZhiLing\packs → deskpet-python/packs → 仓库根/packs。
 # 所有主题索引 / 动画资产 / 画布都通过 packlib 的 v2 API 解析，本文件不再自己拼路径。
 PACKS_ROOT = packlib.packs_root()
 PACK_CLI_LOCKED = False     # --pack 显式指定后置 True：热加载不再跟随主题 active 标记
@@ -464,19 +467,9 @@ def clip_thumb(cid):
     return pm
 
 
-TRAY_LOG_PATH = os.path.join(ROOT, "build", "cache", "pet_tray.log")
-
-
 def tray_log(msg):
-    """托盘诊断：无论用 pythonw 还是控制台启动，都写 build/cache/pet_tray.log。"""
-    line = "%s %s" % (time.strftime("%Y-%m-%d %H:%M:%S"), msg)
-    try:
-        os.makedirs(os.path.dirname(TRAY_LOG_PATH), exist_ok=True)
-        with open(TRAY_LOG_PATH, "a", encoding="utf-8") as f:
-            f.write(line + "\n")
-    except OSError:
-        pass
-    log(msg)
+    """托盘诊断并入主日志：默认关闭，排障时用 DESKPET_LOG 打开（pythonw 下也能看）。"""
+    log("[tray] " + msg)
 
 
 def integrity_level():
@@ -515,17 +508,87 @@ def integrity_level():
         return "?"
 
 
-def log(msg):
-    if not LOG_PATH:
-        return
+def _always_log_path():
+    """致命错误/迁移说明的落点：日志关闭时也写默认位置的 pet.log。"""
+    if LOG_PATH:
+        return LOG_PATH
+    return os.path.join(packlib.app_root(), "pet.log")
+
+
+def _rotate_log(path):
+    """超过 LOG_MAX_BYTES 就把 path 轮转成 path.1（只保留 1 份）；失败只告警一次。"""
+    global _ROTATE_WARNED
     try:
-        with open(LOG_PATH, "a", encoding="utf-8") as f:
-            f.write("%s %s\n" % (time.strftime("%H:%M:%S"), msg))
+        if not os.path.exists(path) or os.path.getsize(path) <= LOG_MAX_BYTES:
+            return
+        bak = path + ".1"
+        if os.path.exists(bak):
+            os.remove(bak)
+        os.replace(path, bak)
+    except OSError as e:
+        # 轮转失败不能影响主流程（PyQt 槽函数里抛异常会 abort），只提醒一次
+        if not _ROTATE_WARNED:
+            _ROTATE_WARNED = True
+            try:
+                with open(path, "a", encoding="utf-8") as f:
+                    f.write("%s [log] rotate failed: %s\n"
+                            % (time.strftime("%H:%M:%S"), e))
+            except OSError:
+                pass
+            if sys.stderr is not None:
+                print("log rotate failed: %s" % e, file=sys.stderr)
+
+
+def _write_log(path, msg):
+    line = "%s %s\n" % (time.strftime("%H:%M:%S"), msg)
+    try:
+        d = os.path.dirname(path)
+        if d:
+            os.makedirs(d, exist_ok=True)
+        _rotate_log(path)
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(line)
     except OSError as e:
         # 日志写失败不能反过来把槽函数炸掉（PyQt 里异常会 abort）。
         # pythonw 下 sys.stderr is None，直接 print(file=None) 会抛 AttributeError，必须先判空。
         if sys.stderr is not None:
             print("log write failed: %s" % e, file=sys.stderr)
+
+
+def log(msg):
+    """常规事件日志：默认关闭（DESKPET_LOG=1 或 --log 打开）。"""
+    if not LOG_ENABLED:
+        return
+    _write_log(_always_log_path(), msg)
+
+
+def log_fatal(msg):
+    """致命错误：默认也写一条，保证 pythonw 下崩溃有据可查。"""
+    _write_log(_always_log_path(), msg)
+
+
+def _resolve_log(arg_path, verbose):
+    """解析日志开关：--log 路径 > DESKPET_LOG > 关闭。
+
+    DESKPET_LOG 取值：1/on/true/yes 打开并写默认位置；0/off/false/no 关闭；
+    其它非空值当作日志文件路径（保留 Tauri 版既有语义）。
+    """
+    global LOG_PATH, LOG_ENABLED
+    default = os.path.join(packlib.app_root(), "pet.log")
+    env = os.environ.get("DESKPET_LOG", "").strip()
+    if arg_path:
+        LOG_PATH, LOG_ENABLED = os.path.abspath(os.path.expanduser(arg_path)), True
+        return
+    low = env.lower()
+    if env and low not in ("0", "off", "false", "no"):
+        if low in ("1", "on", "true", "yes"):
+            LOG_PATH = default
+        else:
+            LOG_PATH = os.path.abspath(os.path.expanduser(env))
+        LOG_ENABLED = True
+        return
+    LOG_PATH = default
+    LOG_ENABLED = bool(verbose)          # --verbose 也顺带打开日志（pythonw 下 stdout 不可见）
 
 
 # ---- 首次启动：示例素材兜底 + 无素材时的可见提示（pythonw 下也有窗口）----
@@ -1093,10 +1156,10 @@ class Pet(QWidget):
         """有托盘就发气泡，没有就messagebox；保证失败原因一定能被看到。"""
         tray = getattr(self, "tray", None)
         if tray is not None and QSystemTrayIcon.supportsMessages():
-            tray.showMessage("知灵 · 桌宠", msg, QSystemTrayIcon.MessageIcon.Warning, 5000)
+            tray.showMessage("智灵 · 桌宠", msg, QSystemTrayIcon.MessageIcon.Warning, 5000)
         else:
             from PyQt6.QtWidgets import QMessageBox
-            QMessageBox.warning(self, "知灵 · 桌宠", msg)
+            QMessageBox.warning(self, "智灵 · 桌宠", msg)
 
     def actions_menu(self, parent):
         """一级「动作 ▸」，组内按系列再分一层；名字过长截断，tooltip 给完整名+clipId。
@@ -1354,7 +1417,7 @@ class Pet(QWidget):
         tray = getattr(self, "tray", None)
         if tray is not None and QSystemTrayIcon.supportsMessages():
             try:
-                tray.showMessage("知灵 · 桌宠", msg, QSystemTrayIcon.MessageIcon.Information, 5000)
+                tray.showMessage("智灵 · 桌宠", msg, QSystemTrayIcon.MessageIcon.Information, 5000)
             except Exception as e:                   # noqa: BLE001 - 气泡失败不能影响计时
                 log("pomodoro_notify failed: %r" % (e,))
         else:
@@ -1383,7 +1446,7 @@ class Pet(QWidget):
             refs["stop"].setEnabled(bool(p.phase))
         tray = getattr(self, "tray", None)
         if tray is not None:
-            tip = "知灵 · 桌宠"
+            tip = "智灵 · 桌宠"
             if p.enabled and p.phase:
                 tip += " · " + p.status_text()
             tray.setToolTip(tip)
@@ -2208,7 +2271,7 @@ class SettingsDialog(QDialog):
         self._editing_state = None
         self._rows = {}          # state -> rule dict（保留主题里的全部字段）
         self._items = {}
-        self.setWindowTitle("知灵 · 桌宠 设置")
+        self.setWindowTitle("智灵 · 桌宠 设置")
         # 非模态：设置窗开着时桌宠仍可拖动（模态会冻结整个应用的鼠标输入）。
         # 保存后的热生效改在 save() 里做，不再依赖 exec() 返回。
         self.setWindowModality(Qt.WindowModality.NonModal)
@@ -3096,7 +3159,7 @@ def setup_tray(app, pet):
 
     无系统托盘环境（少数精简版 Windows / 远程会话）下只打日志并返回 None，
     窗口右键菜单与 Esc 仍可正常退出，不阻塞启动。
-    诊断日志固定写 build/cache/pet_tray.log：pythonw 启动时没有控制台，只靠 isVisible 不够。
+    诊断日志并入主日志（默认关闭，DESKPET_LOG=1 打开）：pythonw 启动时没有控制台，只靠 isVisible 不够。
     """
     icon = pet.windowIcon()
     dpr = app.devicePixelRatio() if hasattr(app, "devicePixelRatio") else 1
@@ -3116,7 +3179,7 @@ def setup_tray(app, pet):
                  "右键菜单与 Esc 仍可用）")
         return None
     tray = QSystemTrayIcon(icon, app)          # 父对象是 QApplication，不是隐藏的 Tool 窗口
-    tray.setToolTip("知灵 · 桌宠")
+    tray.setToolTip("智灵 · 桌宠")
     menu = QMenu()
     menu.setToolTipsVisible(True)
 
@@ -3192,7 +3255,7 @@ def setup_tray(app, pet):
     QTimer.singleShot(1000, lambda: _snap("t+1s"))
     QTimer.singleShot(5000, lambda: _snap("t+5s"))
     tray_log("tray menu_items=%d（Win11 若没看到：点任务栏 ^ 展开；"
-             "设置→个性化→任务栏→其他系统托盘图标 可把「知灵 · 桌宠」设为常显）"
+             "设置→个性化→任务栏→其他系统托盘图标 可把「智灵 · 桌宠」设为常显）"
              % len(menu.actions()))
     return tray
 
@@ -3200,9 +3263,9 @@ def setup_tray(app, pet):
 def _install_excepthook():
     """pythonw 没有控制台：未捕获异常必须落到日志，否则崩了完全无声。"""
     def hook(exc_type, exc, tb):
-        log("UNCAUGHT %s: %s" % (exc_type.__name__, exc))
+        log_fatal("UNCAUGHT %s: %s" % (exc_type.__name__, exc))
         try:
-            log("".join(traceback.format_exception(exc_type, exc, tb)))
+            log_fatal("".join(traceback.format_exception(exc_type, exc, tb)))
         except Exception:
             pass
         if sys.stderr is not None:
@@ -3236,12 +3299,12 @@ def _claim_instance():
 
 
 def main():
-    global META, MANIFEST, CLIPS, ACTIONS, LOG_PATH, VERBOSE
+    global META, MANIFEST, CLIPS, ACTIONS, LOG_ENABLED, VERBOSE
     ap = argparse.ArgumentParser()
     ap.add_argument("--width", type=int, default=0, help="宠物宽度(像素)，默认中档=屏幕宽 15%%")
     ap.add_argument("--pack", default="", help="指定素材包（默认读 themes/*.json 里 active=true 的主题）")
-    ap.add_argument("--verbose", action="store_true", help="启动时打印 pack 画布与素材 license")
-    ap.add_argument("--log", default="", help="事件日志路径（默认 build/cache/pet.log；pythonw 下也能查）")
+    ap.add_argument("--verbose", action="store_true", help="启动时打印 pack 画布与素材 license（同时打开日志）")
+    ap.add_argument("--log", default="", help="事件日志路径（传路径即打开；默认关闭，也可用 DESKPET_LOG=1）")
     ap.add_argument("--clip", default="", help="启动时直接播某个动作（调试用）")
     ap.add_argument("--state", default="", help="启动时强制进入某个状态（调试用：click/done/…）")
     ap.add_argument("--state-map", default="", help="状态映射配置路径（默认当前主题的 themes/<id>.json）")
@@ -3256,22 +3319,37 @@ def main():
     ap.add_argument("--freeze", action="store_true",
                     help="调试用：停在第一帧不播，供命中测试取稳定样本")
     args = ap.parse_args()
-    # pythonw 启动时没有控制台：默认就把日志写到 build/cache/pet.log（随仓库走、已 gitignore，
-    # 排障时用户能直接找到；不用 %LOCALAPPDATA% 是为了「整个目录可整体搬走」。
-    LOG_PATH = args.log or os.path.join(ROOT, "build", "cache", "pet.log")
-    try:
-        os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
-    except OSError:
-        pass
+    # 日志默认关闭（生产不写常规日志）；DESKPET_LOG=1 或 --log <路径> / --verbose 临时打开，
+    # 打开后按大小轮转：单文件 2 MB，归档固定 .1，不按时间戳累积。
+    _resolve_log(args.log, args.verbose)
+    if LOG_ENABLED:
+        try:
+            os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
+        except OSError:
+            pass
     VERBOSE = args.verbose
     _install_excepthook()
     _claim_instance()
 
-    # 素材目录统一解析：DESKPET_PACKS → config.json:packsDir → %LOCALAPPDATA%\DeskPet\packs → 就地。
-    # 解析告警（自定义目录不存在等）直接进 pet.log，便于用户按提示处理。
+    # 旧 %LOCALAPPDATA%\DeskPet → 新 %LOCALAPPDATA%\ZhiLing（首次运行一次性迁移）。
+    # 迁移说明无论日志开关都写一条：迁移成功后旧目录已不在，不记就再也查不到。
+    _mig = packlib.root_migration()
+    if _mig["status"] == "ok":
+        _write_log(_always_log_path(),
+                   "user_root_migrate %s → %s（迁移 %d 项）"
+                   % (_mig["legacy_root"], _mig["new_root"], _mig["moved"]))
+    elif _mig["failed"]:
+        _write_log(_always_log_path(),
+                   "user_root_migrate 失败: %s → %s err=%s；继续使用旧目录 %s"
+                   % (_mig["legacy_root"], _mig["new_root"], _mig["error"],
+                      packlib.app_root()))
+
+    # 素材目录统一解析：DESKPET_PACKS → config.json:packsDir → %LOCALAPPDATA%\ZhiLing\packs → 就地。
+    # 解析告警（自定义目录不存在等）直接进日志，便于用户按提示处理。
     packlib.set_warn_sink(log)
     _cfg_src = ("env:DESKPET_CONFIG" if os.environ.get("DESKPET_CONFIG", "").strip()
                 else "default:LocalAppData")
+    log("log_path=%s（轮转 2MB×1）" % (LOG_PATH if LOG_ENABLED else "关闭"))
     log("config_path=%s（来源 %s）" % (packlib.config_path(), _cfg_src))
     packlib.migrate_legacy_config()            # 旧 deskpet-python\config.json 一次性合并
     _packs_res = packlib.packs_resolution()

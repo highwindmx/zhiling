@@ -576,7 +576,7 @@ class SettingsDialog(QDialog):
         self._editing_state = None
         self._rows = {}          # state -> rule dict（保留主题里的全部字段）
         self._items = {}
-        self.setWindowTitle("知灵 · 桌宠 设置")
+        self.setWindowTitle("智灵 · 桌宠 设置")
         self.setModal(True)
         avail = QApplication.primaryScreen().availableGeometry()
         self.setMaximumSize(int(avail.width() * 0.90), int(avail.height() * 0.85))

@@ -55,7 +55,7 @@ def main():
          % (QSystemTrayIcon.isSystemTrayAvailable(), QSystemTrayIcon.supportsMessages()))
 
     tray = QSystemTrayIcon(icon, app)
-    tray.setToolTip("知灵桌宠 tray probe")
+    tray.setToolTip("智灵桌宠 tray probe")
     menu = QMenu()
     act_show = QAction("显示", menu)
     act_show.triggered.connect(lambda: on_show(tray))

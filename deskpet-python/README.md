@@ -2,14 +2,14 @@
 
 ## 1. 这是什么
 
-一只「活泛的」透明桌面宠物：素材来自 **即梦 AI / MiniMax Design 生成的短视频**（`material\DSMaid\*.mp4`，共 15 段），
+一只「活泛的」透明桌面宠物：素材来自 **即梦 AI / MiniMax Design 生成的短视频**（`material\video\DSMaid\*.mp4`，共 16 段），
 用**素材工坊**把绿幕抠掉、得到透明帧序列，再用主题映射 `themes\<id>.json` 把 DSH 的状态事件**绑定**到具体动画，
 最后由 `pet.py` 在桌面上透明置顶地播放。**Python 版是主线，Tauri 版只是另一种打包形态。**
 
 整条素材链路是因果关系，不是功能罗列：
 
 ```
-短视频（绿幕 mp4，15 段）
+短视频（绿幕 mp4，16 段，见 `material\video\DSMaid\`）
    │  ① 素材工坊 · 裁黑边：整片统一裁一次（逐帧裁会让脚底抖）
    │  ② 素材工坊 · 取绿幕色：四角取样 → hue_ref / sat 闸门
    │  ③ 素材工坊 · 抠像：色相 + 饱和度 + 亮度三闸门 → alpha，去溢色、软地板、连通块清理
@@ -18,24 +18,24 @@
 packs\animations\<assetId>\f0000.webp …        （透明帧序列，不入库、可随时重建）
    │  ⑤ 状态绑定：themes\<id>.json 把 idle / busy / done / error … 指向 clipIds[]
    ▼
-pet.py / deskpet-tauri.exe  →  桌面上会动的宠物
+pet.py / ZhiLing.exe  →  桌面上会动的宠物
 ```
 
 换句话说：**视频是原料，工坊是加工厂，packs 是成品仓库，主题映射是「什么情况播哪段」的接线图，pet.py 是放映机。**
 任何一环改了都得往下游重新生成，详见 §3 与 §6 的「工坊调了、桌宠没变」。
 
-> 完整素材包不随代码入库。首次启动找不到素材时会自动把 `sample_packs\sample`（仅 idle 一段）装到 `%LOCALAPPDATA%\DeskPet\packs`，保证先出画面；完整包安装、放置方式与常见问题见仓库根 [README](../README.md) 的「获取与安装素材包」。
+> 完整素材包不随代码入库。首次启动找不到素材时会自动把 `sample_packs\sample`（仅 idle 一段）装到 `%LOCALAPPDATA%\ZhiLing\packs`，保证先出画面；完整包安装、放置方式、解析顺序与常见问题见仓库根 [README](../README.md) 的「共用规范」。
 
 ## 2. 项目文件夹结构
 
 ```
 zhiling\
-├─ material\DSMaid\              原始素材：15 段绿幕 mp4（即梦 / MiniMax Design 导出），只读参考
+├─ material\video\DSMaid\        原始素材：16 段绿幕 mp4（即梦 / MiniMax Design 导出），只读参考
 ├─ deskpet-python\               ← 本文档所在，Python 主线
 │  ├─ pet.py                     桌宠主程序：透明窗口、动作调度、右键菜单、托盘、状态输入
 │  ├─ state_map.py              状态映射加载与仲裁（DSH 事件 → clipId）
 │  ├─ run.bat / run.vbs         双击入口（run.vbs 完全无黑窗；run.bat 会闪一下 cmd）
-│  ├─ config.json               旧版本机偏好（已停用）；首次运行合并进 %LOCALAPPDATA%\DeskPet\config.json
+│  ├─ config.json               旧版本机偏好（已停用，若存在则首次运行合并进 %LOCALAPPDATA%\ZhiLing\config.json，否则忽略）
 │  ├─ pyproject.toml / uv.lock 依赖与锁定版本（Python ≥ 3.11）
 │  ├─ packs\                   成品素材包（可整体搬走）
 │  │  ├─ active.json            可选的兼容镜像（v2 以主题文件里的 active 标记为准）
@@ -110,18 +110,25 @@ run.vbs                                 # 推荐：双击无任何黑窗（wscri
 run.bat                                 # 备用：会闪约 0.5s 的 cmd 窗口（bat 自身的启动开销）
 uv run python pet.py --width 300        # 前台跑，便于看日志
 uv run python pet.py --pack maid-basic  # 临时换 pack（不写 active.json）
-uv run python pet.py --verbose --log build\cache\pet.log
+uv run python pet.py --verbose --log %LOCALAPPDATA%\ZhiLing\pet.log   # 临时打开详细日志
 ```
 
-`pythonw` 没有控制台，所以默认日志固定写 `build\cache\pet.log`（随目录走、已 gitignore，排障时直接打开）；
-托盘诊断另写 `build\cache\pet_tray.log`。未捕获异常（含子线程）也会进 `pet.log`。`run.vbs` 也支持参数：
+**日志默认关闭**（生产不写常规日志）。pythonw 没有控制台，需要排障时用统一开关临时打开：
+
+| `DESKPET_LOG` | 行为 |
+|---|---|
+| 未设置 / `0` / `off` / `false` / `no` | 关闭（默认），只保留致命错误与一次性迁移说明 |
+| `1` / `on` / `true` / `yes` | 打开，写 `%LOCALAPPDATA%\ZhiLing\pet.log` |
+| 其它非空值 | 当作日志文件路径并打开 |
+
+也可用 `--log <路径>` 或 `--verbose` 打开。打开后按大小轮转：单文件上限 **2 MB**，归档固定为 `pet.log.1`、只留 1 份，不按时间戳累积；轮转失败只告警一次，不影响主流程。托盘诊断（`[tray] …`）并入同一份日志，不再单独写 `pet_tray.log`；未捕获异常（含子线程）始终进日志。`run.vbs` 也支持参数：
 `wscript run.vbs --state-port 8765`。
 
 运行期行为要点：
 
 - **透明置顶**：无边框、置顶、不抢焦点；画布 576×530，按 `--width` 缩放（`--width 300` 时窗口约 192×177）。
 - **空白穿透**：透明区域用掩码命中测试近似「点穿到桌面」；已知限制见 §7。
-- **尺寸档位 / 默认尺寸**：右键或托盘「尺寸」小/中/大（设置里不再提供尺寸项）；选择写入 `%LOCALAPPDATA%\DeskPet\config.json` 的 `tier`（与 Tauri 版共用，`DESKPET_CONFIG` 可覆盖路径），下次启动沿用。
+- **尺寸档位 / 默认尺寸**：右键或托盘「尺寸」小/中/大（设置里不再提供尺寸项）；选择写入 `%LOCALAPPDATA%\ZhiLing\config.json` 的 `tier`（与 Tauri 版共用，`DESKPET_CONFIG` 可覆盖路径），下次启动沿用。
 - **右键菜单**：`动作 ▸`（按 工作 / 情绪 / 特殊 分组，名字过长截断，悬停看完整名+clipId）、`尺寸 ▸`、`设置…`、`退出`。素材工坊与「关于素材」不在桌宠右键里。
 - **双击轮播**：双击宠物循环播下一段动作；Esc 退出（需先点一下让窗口拿到焦点）。
 - **设置对话框**（右键「设置…」）：只有两个页签；「恢复上次配置 / 保存配置 / 取消」**紧跟页签、左对齐**，
@@ -142,25 +149,26 @@ uv run python pet.py --verbose --log build\cache\pet.log
     「上移状态 / 下移状态 / 恢复默认排序」（同一行）；完成 / 出错 / 待你决策 未点击时持续播放、不回 idle，
     它不是状态行，不参与拖拽排序与 `priority` 重算。
   - **提醒与连接**：番茄钟总开关、专注 / 休息时长（默认 25 / 5 分钟）；DSH 链路指示灯 + 「重新检测」（`:55471` → `dsh_bridge.py` → `/state`，不新增端口探测）。
-- **托盘**：托盘图标（`assets\icon.ico`，紫色圆角矩形 `#6D4BD6` + 黑体「宠」字，多尺寸 16–256）常驻；右键出菜单（显示/隐藏、动作 ▸、尺寸 ▸、番茄钟 ▸、素材工坊…、设置…、退出），**双击图标 = 显示/隐藏**。
-  白字是默认（紫底对比度更高）；想要黑字就用 `assets\icon_black_text.ico` 覆盖 `icon.ico`，或改 `build\tools\make_icon.py` 顶部常量后重跑脚本。
+- **托盘**：托盘图标（`assets\icon.ico`，紫色圆角矩形 `#6D4BD6` + 黑体白色「灵」字，多尺寸 16–256）常驻；右键出菜单（显示/隐藏、动作 ▸、尺寸 ▸、番茄钟 ▸、素材工坊…、设置…、退出），**双击图标 = 显示/隐藏**。
+  白字是默认；要改字色/文案，改 `build\tools\make_icon.py` 顶部常量后重跑脚本重新生成 `assets\icon.ico`（参数需与 `deskpet-tauri\build\make_icons.py` 保持一致，才能同尺寸逐像素一致）。
   隐藏只停动画、不退进程（`setQuitOnLastWindowClosed(False)`）；真正退出走托盘「退出」或 Esc。
   **看不到图标时按顺序查**：① 点任务栏右下角 `^`（Win11 默认把新图标折叠进溢出菜单）；
-  ② 设置 → 个性化 → 任务栏 → 其他系统托盘图标，把「知灵 · 桌宠」设为开；③ 看 `build\cache\pet_tray.log` 的
-  `available / visible / icon_actual16 / geometry`；④ 仍不行就跑 `build\tools\tray_probe.py`（10 秒自检）——
+  ② 设置 → 个性化 → 任务栏 → 其他系统托盘图标，把「智灵 · 桌宠」设为开；③ 用 `DESKPET_LOG=1` 打开日志后看
+  `[tray]` 行的 `available / visible / icon_actual16 / geometry`；④ 仍不行就跑 `build\tools\tray_probe.py`（10 秒自检）——
   探针里也看不到就是系统/Qt 层问题，与 pet.py 无关。
 - **状态映射**：`packs\themes\<id>.json`，运行中每 800ms 检查一次文件变更并**热加载**（改完不用重启）；
   改 `clipIds` / `priority` 即时生效。改当前启用主题（`active` 标记）必须**重启**。
-- **实测数字**（本机 `--log`，`--width 300`）：首帧绘制 **104 ms**、6 秒工作集 **56.9 MB**、峰值 **58.8 MB**、15 段动作全部通过首帧尺寸校验。
-  注：用户此前一次实测为 156 ms / 62 MB，属批次与环境差异，以你本机 `--log` 输出为准。
+- **实测数字**（本机 `--width 300`）：首帧绘制 **104 ms**、6 秒工作集 **56.9 MB**、峰值 **58.8 MB**、15 段动作全部通过首帧尺寸校验。
+  注：用户此前一次实测为 156 ms / 62 MB，属批次与环境差异，以你本机现象为准。
 
 ### 4.1 让 DSH（或任何脚本）驱动桌宠
 
 桌宠默认只读主题映射（`themes\<id>.json`），不会自己知道 DSH 在干什么；要联动必须把状态**发进来**。两种零依赖方式，启动时二选一或都给：
 
 ```powershell
-uv run python pet.py --state-port 8765 --log build\cache\pet.log
-uv run python pet.py --state-file build\cache\state.json --log build\cache\pet.log
+$env:DESKPET_LOG = "1"                 # 可选：排障时打开日志
+uv run python pet.py --state-port 8765
+uv run python pet.py --state-file build\cache\state.json
 ```
 
 状态名必须是主题映射 `themes\<id>.json` 里已有的键（`streaming` / `needs_decision` / `done` / `error` / `busy` …）。`priority` 不传就用映射表里的值；传了只影响这一次仲裁，低优先级不会打断正在播的高优先级动作。`timeoutSec` 可选，到点没收到新状态就回落 `idle`。
@@ -190,7 +198,7 @@ Set-Content -Path build\cache\state.json -Encoding UTF8 -Value 'needs_decision'
 ### 4.2 自动接 DSH：`dsh_bridge.py`（依赖 DSH 侧插件）
 
 DSH 真正在跑的时候，事件不是从桌宠这一端来的：仓库里的 `dsh-deskpet-bridge`（DSH 插件）把
-`welcome / status(running|idle) / token / done / error` 广播到 `ws://127.0.0.1:55471`。桌宠本身不订阅 WebSocket，
+对话流、工具调用、审批与选择题事件广播到 `ws://127.0.0.1:55471`。桌宠本身不订阅 WebSocket，
 所以**默认不会自动跟 DSH 变**；需要这个桥常驻：
 
 ```powershell
@@ -202,9 +210,54 @@ wscript run.vbs --state-port 8765
 .venv\Scripts\python.exe build\tools\dsh_bridge.py --probe
 ```
 
-映射：`status running→busy`、`status idle→idle`、`token→streaming`（整轮期间用 `BRIDGE_TTL_BUSY_SEC=120` 兜底，工具跑再久也不掉 idle）、`done→done`、`error→error`（10s 回落）。
 前置条件只有两个：DSH 已加载该插件（55471 在监听）、桌宠带了 `--state-port`。桥只连本机回环、无第三方依赖。
 `--probe` 会直接打印是「DSH 没广播」还是「桌宠没开端口」。不装插件就必须 DSH 侧自己发 HTTP 或写状态文件（见 4.1）。
+
+#### 插件订阅与广播
+
+| 订阅的 DSH 事件 | 广播的 `type` |
+| --- | --- |
+| `agent/assistant-stream`：`start` / `chunk`（`text-delta`、`reasoning-delta`）/ `end` | `status(running)` / `token` / `stream-end` |
+| `session/event`：`turn/start`、`turn/end`、`assistant/message`、`tool/call`、`tool/result`、`approval/asked`、`approval/decided` | `status(running)`、`done`、`message`、`question-asked`+`tool-result`、`approval-asked`+`approval-decided` |
+| `agent/status`、`agent/error`、`agent/created`、`agent/disposed` | `status`、`error`、`agent` |
+
+- 只有 `tool/call` 的 `name=ask_user_question` 转成 `question-asked`（带 `questionCount`/`optionCount`/`title`/`questions[]`），其余工具调用不广播；审批走 `approval-asked`（只有 `id`/`toolName`/`reason`，没有 `questions[]`）。
+- `GET /health` 返回 `pid`/`port`/`sockets`/`events`/`tokens`/`lastType`/`lastAt`，不依赖 WebSocket 即可自检。
+- 只绑 `127.0.0.1`；`allowRemote=false` 时非回环连接直接断开；反向通道可发 `{"type":"send","text":"…"}`（走当前会话 `followup`）或 `{"type":"ping"}`（回 `pong`）。
+
+#### 事件 → 状态（`map_event`）
+
+| 事件 | 状态 | 备注 |
+| --- | --- | --- |
+| `status`：`running`/`busy`/`thinking`/`working` | `busy` | `timeoutSec=120`，标记「轮内」 |
+| `status`：`idle`/`ready`/`stop`/`stopped` | `idle` | 轮内忽略：分段间隙的 idle 不能把画面打回待机 |
+| `status`：`completed`/`complete`/`done`，或 `done`/`turn/end` | `done` | 清「轮内」 |
+| `status`：`failed`/`failure`/`error`，或 `agent/error` | `error` | `timeoutSec=10` |
+| `token` | `streaming` | `priority=52`（压过 `busy` 的 50）、`timeoutSec=120` |
+| `stream-end` / `tool-result` | `busy` | 轮内续期，轮外忽略 |
+| `question-asked` | `needs_decision` | 常驻提醒，不代答 |
+| `question-cleared` | `busy`（轮内）/ `idle`（轮外） | 只认同一 `callId` |
+| `approval-asked` | `needs_decision` | 常驻提醒，不代答 |
+| `approval-decided` | `busy`（轮内）/ `idle`（轮外） | 只认同一 `id` |
+| `welcome` / `pong` / `message` / `agent` | 不变 | 握手、心跳、通知类 |
+
+`token` 优先级抬到 52 的原因：DSH 的「开始跑」和「开始出字」几乎同时到达，`busy`(50) 会先占住，`streaming`(40) 抢不过。同 `type` 的重复事件按内容去重，`status` 类按 1s 节流，避免每帧刷新。
+
+#### 安装 / 启用
+
+1.  DSH 设置 →「插件」→ 添加插件，箭头里选「安装第三方插件」，输入本机目录 `<仓库路径>\dsh-deskpet-bridge`（也接受 npm 包名、Git 地址）；
+2.  DSH 用 pnpm 装进 profile，并以 `link:` 写进 `dependencies` 与 `dsh.profile.bundles`；
+3.  点「立即启用」，**重启 DSH Desktop** 才加载；
+4.  改端口：插件设置里的 `port`（默认 `55471`），同时改桥的 `--ws-port`。
+
+#### 排查
+
+| 现象 | 先查什么 |
+| --- | --- |
+| `55471` 没监听 | 插件没加载：看 profile 登记与插件日志 `build\cache\dsh_bridge_plugin.log`（`DESHPET_PLUGIN_LOG` 可改路径；超 1MB 清空重写） |
+| 端口在监听但桌宠不动 | `dsh_bridge.py --probe`：分别打印 55471 与 8765 两端状态，并读插件 `/health` |
+| 不确定 DSH 有没有广播 | `dsh_bridge.py --selftest 20`：连 20 秒，打印事件条数与类型分布 |
+| 想看原始事件 | 桥日志 `build\cache\dsh_bridge.log`（保留最近 400 行，token 正文不落盘） |
 
 插件本体：仓库外 `C:\Users\<你>\.dsh\profiles\desktop\node_modules\@local\dsh-deskpet-bridge`
 （指向仓库 `zhiling\dsh-deskpet-bridge`，后者已 gitignore）。它在 `profiles\desktop\package.json` 里登记为依赖 + bundle；
@@ -214,8 +267,7 @@ wscript run.vbs --state-port 8765
 
 ## 5. 状态映射怎么改
 
-`packs\themes\<id>.json` 的 `states` 是对象，一个键一个状态（共 13 个；`long_idle_1` / `long_idle_2` 各自独立，
-另有番茄钟的 `focus` / `focus_break`）：
+`packs\themes\<id>.json` 的 `states` 是对象，一个键一个状态（共 13 个，已包含番茄钟的 `focus` / `focus_break`；`long_idle_1` / `long_idle_2` 各自独立；下表逐行列出全部 13 个）:
 
 | 状态 | 触发 | 动作 | 优先级 |
 |---|---|---|---|
@@ -247,9 +299,9 @@ priority 就是这时候的排队规则：数值大的先播、小的被拒且**
 
 ## 6. Tauri 版
 
-- 定位：单 exe + 外置素材目录，体积与内存更小；素材不放 exe 内，运行时解析顺序：`DESKPET_PACKS` → 设置里的「素材目录」→ `%LOCALAPPDATA%\DeskPet\packs` → exe 同级 `assets\`（缺素材会显式报错）。
+- 定位：单 exe + 外置素材目录，体积与内存更小；素材不放 exe 内，运行时解析顺序：`DESKPET_PACKS` → 设置里的「素材目录」→ `%LOCALAPPDATA%\ZhiLing\packs` → exe 同级 `assets\`（缺素材会显式报错）。
 - **托盘：已实现**（`Cargo.toml` 启用 `tray-icon`，`main.rs` 里 `TrayIconBuilder` 构建状态/尺寸/番茄钟/工坊/设置/退出菜单）。
-- 环境变量：`$env:DESKPET_PACKS = "D:\...\deskpet-python\packs"`，然后直接运行编译出的 `deskpet-tauri.exe`（或 `cd deskpet-tauri\src-tauri && cargo run --release --target-dir "$env:TEMP\deskpet-target"`）。
+- 环境变量：`$env:DESKPET_PACKS = "D:\...\deskpet-python\packs"`，然后直接运行编译出的 `ZhiLing.exe`（或 `cd deskpet-tauri\src-tauri && cargo run --release --target-dir "$env:TEMP\deskpet-target"`）。
 - **免 ffmpeg**：素材工坊改用 Windows Media Foundation 解码（前置对齐的话不装 ffmpeg 也能用 Tauri 版工坊）；仅支持 mp4/mov 的 H.264/HEVC，webm/VP9/AV1 会提示转码或改用本 Python 版工坊。
 - 编译已验证（用户实测可产出可运行 exe）。
 - 运行期（透明、穿透、播放）**未做自动化验证**，只做过人工确认。
@@ -272,9 +324,9 @@ priority 就是这时候的排队规则：数值大的先播、小的被拒且**
 **排错**
 
 - **看不到托盘图标**：先点任务栏 `^` 展开（Win11 默认折叠）→ 设置 → 个性化 → 任务栏 → 其他系统托盘图标 里打开；
-  再查 `build\cache\pet_tray.log`（`available=True visible=True actual16=16x16` 说明 Qt 已注册，问题在系统折叠区）；
+  再用 `DESKPET_LOG=1` 打开日志查 `[tray]` 行（`available=True visible=True actual16=16x16` 说明 Qt 已注册，问题在系统折叠区）；
   最后跑 `build\tools\tray_probe.py`，10 秒内探针也看不到就是系统/Qt 层问题，不是 pet.py。
-  启动多个 pet.py 会在 `pet_tray.log` 里出现 `WARN another pet instance`，先退出多余的实例。
+  启动多个 pet.py 会在日志里出现 `WARN another pet instance`，先退出多余的实例。
 - **双击 run.bat 闪黑窗**：bat 自身必然创建 cmd 窗口（本机实测约 0.45–0.85s），改用 `run.vbs`（wscript 隐藏启动，无任何窗口）。
 - **DSH 在跑但桌宠不动**：桌宠默认不订阅 DSH。先 `dsh_bridge.py --probe`：55471 未监听 = 插件没加载，
   8765 未监听 = 桌宠没带 `--state-port`；两者都在再启动 `dsh_bridge.py`（见 §4.2）。

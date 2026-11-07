@@ -3,7 +3,7 @@
 约定（详见 docs/material-packs.md）：
 - packs/<packId>/manifest.json   角色名、画布、license、每个 clip 的 scale/offset/anchor/loop/priority
 - packs/<packId>/frames/<clipId>/ 帧序列（webp/png），路径相对 pack 根
-- packs/themes/<id>.json          系列主题映射（13 状态 → clipIds[]；v2 当前格式）
+- packs/themes/<id>.json          主题映射（13 状态 → clipIds[]；v2 当前格式）
 - clips.json 由 manifest 派生（deskpet-python/clips.json），两版桌宠都只读它，字段语义不分叉
 """
 import glob, json, os, shutil, sys, time
@@ -17,7 +17,7 @@ REPO = os.path.dirname(ROOT)                             # 仓库根
 # 解析顺序（先命中先用；不存在的候选跳过并记一条告警，绝不因为目录缺失而崩）：
 #   1. 环境变量 DESKPET_PACKS（便携版 / 测试隔离用）
 #   2. config.json 的 packsDir（设置窗「素材目录」，优先级高于默认位置）
-#   3. %LOCALAPPDATA%\DeskPet\packs（默认位置）
+#   3. %LOCALAPPDATA%\ZhiLing\packs（默认位置）
 #   4. 脚本旁 deskpet-python/packs（老布局）
 #   5. 仓库根 zhiling/packs（Python / Tauri 共用布局）
 _WARNED_MSGS = set()
@@ -46,8 +46,92 @@ def _warn(msg):
         print(msg, file=sys.stderr)
 
 
+# ---------------- 用户根目录（%LOCALAPPDATA%\ZhiLing） ----------------
+# 首次运行如果新根不存在（或为空）、旧 %LOCALAPPDATA%\DeskPet 有内容，就把旧内容整体搬过来：
+# 同盘优先 os.rename（原子、最快）；失败再逐项 move，任一项失败则回滚并继续使用旧目录，
+# 绝不让迁移失败拖垮启动。config.json / packs / 日志全部落在 app_root() 下。
+APP_DIR = "ZhiLing"
+LEGACY_APP_DIR = "DeskPet"
+_ROOT_STATE = None
+
+
+def _local_base():
+    base = os.environ.get("LOCALAPPDATA", "").strip()
+    if not base:
+        base = os.path.join(os.path.expanduser("~"), "AppData", "Local")
+    return base
+
+
+def _dir_entries(path):
+    try:
+        return os.listdir(path) if os.path.isdir(path) else []
+    except OSError:
+        return []
+
+
+def _migrate_user_root(new_root, legacy_root):
+    """把 legacy_root 的内容迁到 new_root；返回 {status, moved, failed, error, ...}。"""
+    res = {"status": "skip", "moved": 0, "failed": False, "error": "",
+           "new_root": new_root, "legacy_root": legacy_root}
+    if _dir_entries(new_root):
+        res["status"] = "skip:new-root-exists"
+        return res
+    names = _dir_entries(legacy_root)
+    if not names:
+        res["status"] = "skip:no-legacy"
+        return res
+    # 1) 同盘整目录改名（原子）
+    try:
+        if os.path.isdir(new_root):
+            os.rmdir(new_root)             # 空目录先去掉，避免 rename 报「已存在」
+        os.rename(legacy_root, new_root)
+        res.update(status="ok", moved=len(names))
+        return res
+    except OSError as e:
+        first_err = e
+    # 2) 逐项移动；失败则回滚已移动项，继续用旧目录
+    os.makedirs(new_root, exist_ok=True)
+    done, err = [], first_err
+    for name in names:
+        src, dst = os.path.join(legacy_root, name), os.path.join(new_root, name)
+        try:
+            shutil.move(src, dst)
+            done.append((dst, src))
+        except OSError as e:
+            err = e
+            break
+    if len(done) != len(names):
+        for dst, src in done:
+            try:
+                shutil.move(dst, src)
+            except OSError:
+                pass
+        res.update(status="failed", moved=0, failed=True, error=str(err))
+        return res
+    res.update(status="ok", moved=len(names))
+    return res
+
+
+def app_root():
+    """当前用户根：正常为 %LOCALAPPDATA%\\ZhiLing；迁移失败且旧目录还在时退回旧目录。"""
+    global _ROOT_STATE
+    if _ROOT_STATE is None:
+        base = _local_base()
+        _ROOT_STATE = _migrate_user_root(os.path.join(base, APP_DIR),
+                                         os.path.join(base, LEGACY_APP_DIR))
+    if _ROOT_STATE["failed"] and os.path.isdir(_ROOT_STATE["legacy_root"]):
+        return _ROOT_STATE["legacy_root"]
+    return _ROOT_STATE["new_root"]
+
+
+def root_migration():
+    """迁移结果（供启动日志说明迁移了多少项 / 失败原因）。"""
+    app_root()
+    return dict(_ROOT_STATE)
+
+
 # ---------------- 配置文件统一解析（Python 与 Tauri 共用同一份） ----------------
-# 默认 %LOCALAPPDATA%\DeskPet\config.json；环境变量 DESKPET_CONFIG 可整体覆盖
+# 默认 %LOCALAPPDATA%\ZhiLing\config.json；环境变量 DESKPET_CONFIG 可整体覆盖
 # （便携版 / 测试隔离用）。旧版 deskpet-python\config.json 首次访问时合并进新文件：
 # 新文件已有键优先，旧文件只补缺失键；迁移后旧文件改名为 config.json.migrated，
 # 之后不再读写它。
@@ -57,11 +141,8 @@ _CONFIG_MIGRATED = False
 
 
 def default_config_path():
-    """默认配置：%LOCALAPPDATA%\\DeskPet\\config.json（与 Tauri 版同一份）。"""
-    base = os.environ.get("LOCALAPPDATA", "").strip()
-    if not base:
-        base = os.path.join(os.path.expanduser("~"), "AppData", "Local")
-    return os.path.join(base, "DeskPet", "config.json")
+    """默认配置：%LOCALAPPDATA%\\ZhiLing\\config.json（与 Tauri 版同一份）。"""
+    return os.path.join(app_root(), "config.json")
 
 
 def config_path():
@@ -135,7 +216,7 @@ def migrate_legacy_config():
 
 
 def user_config():
-    """读配置（默认 %LOCALAPPDATA%\\DeskPet\\config.json）；按 mtime+size 缓存。"""
+    """读配置（默认 %LOCALAPPDATA%\\ZhiLing\\config.json）；按 mtime+size 缓存。"""
     migrate_legacy_config()
     p = config_path()
     try:
@@ -183,11 +264,8 @@ def config_packs_dir():
 
 
 def default_packs_dir():
-    """默认素材目录：%LOCALAPPDATA%\\DeskPet\\packs（拿不到环境变量时退回用户目录同构路径）。"""
-    base = os.environ.get("LOCALAPPDATA", "").strip()
-    if not base:
-        base = os.path.join(os.path.expanduser("~"), "AppData", "Local")
-    return os.path.join(base, "DeskPet", "packs")
+    """默认素材目录：%LOCALAPPDATA%\\ZhiLing\\packs（拿不到环境变量时退回用户目录同构路径）。"""
+    return os.path.join(app_root(), "packs")
 
 
 def packs_candidates():
@@ -1024,7 +1102,11 @@ def list_assets(force=False):
         aid = meta.get("assetId") or d
         meta.setdefault("assetId", aid)
         meta.setdefault("name", aid)
-        meta.setdefault("dir", asset_dir(aid))
+        # dir 是绝对路径：用户根从 DeskPet 迁到 ZhiLing（或整目录拷贝）后，旧值会指向
+        # 已不存在的位置，必须丢弃回落到 animations/<assetId>，否则该段「缺首帧」直接崩启动。
+        _dir = meta.get("dir")
+        if not (isinstance(_dir, str) and _dir and os.path.isdir(_dir)):
+            meta["dir"] = asset_dir(aid)
         meta.setdefault("canvas", {"w": V2_DEFAULT_CANVAS[0], "h": V2_DEFAULT_CANVAS[1]})
         meta.setdefault("fps", 24)
         meta.setdefault("count", 0)
@@ -1044,7 +1126,7 @@ def write_asset(aid, meta):
     meta = dict(meta)
     meta["assetId"] = aid
     meta["version"] = 2
-    meta.setdefault("dir", asset_dir(aid))
+    meta.pop("dir", None)     # 不落盘绝对路径：迁移/拷贝后会失效；运行时由 list_assets() 补
     invalidate_cache()
     return _atomic_json(asset_meta_path(aid), meta)
 
@@ -1103,7 +1185,7 @@ def has_usable_material(root=None):
 
 
 def install_sample_pack():
-    """把 sample_packs/sample 复制到默认 %LOCALAPPDATA%\\DeskPet\\packs。
+    """把 sample_packs/sample 复制到默认 %LOCALAPPDATA%\\ZhiLing\\packs。
 
     返回 (ok, msg)。只在没有可用素材、且解析结果就是默认位置时安装；
     逐文件复制，已存在的一律跳过，绝不覆盖用户数据。
