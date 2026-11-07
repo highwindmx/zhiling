@@ -67,7 +67,7 @@ def main():
     if ok:
         print("OK: 两端 STATES 一致（%d 个，均以 idle 结尾）" % len(py_states))
         return 0
-    print("FAIL: 两端 STATES 不一致，请同步 v2_constants.STATES 与 shared.js STATES")
+    print("FAIL: 两端 STATES 不一致，请同步 shared_constants.STATES 与 shared.js STATES")
     return 1
 
 

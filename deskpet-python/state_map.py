@@ -17,22 +17,11 @@ import os
 import sys
 import time
 
-# 跨端常量（state_map / pet / Tauri shared.js 共享，单一真相源）。
-# state_map.py 位于仓库根目录，直接 import；被其它目录脚本导入时退回本地定义。
-try:
-    from v2_constants import (STATES, REMINDER_STATES, HOLD_STATES,
+# 跨端常量（state_map / pet / dsh_bridge / Tauri shared.js 共享，单一真相源）。
+# 不再保留内联副本：常量只此一份，避免改一处漏一处。
+from shared_constants import (STATES, REMINDER_STATES, HOLD_STATES,
                               LONG_IDLE_SEC, AWAITING_USER_SEC,
                               LONG_IDLE_2_AFTER_SEC, DECISION_TIMEOUT_SEC)
-except Exception:  # noqa: BLE001 - 极端情况下（根目录不在 sys.path）保留内联兜底
-    STATES = ("double_click", "click", "error", "needs_decision", "done",
-              "busy", "focus", "streaming", "awaiting_user", "focus_break",
-              "long_idle_2", "long_idle_1", "idle")
-    REMINDER_STATES = ("awaiting_user", "needs_decision")
-    HOLD_STATES = ("done", "error", "needs_decision")
-    LONG_IDLE_SEC = 600
-    AWAITING_USER_SEC = 30
-    LONG_IDLE_2_AFTER_SEC = 1800
-    DECISION_TIMEOUT_SEC = 300
 
 _LOG_MAX = 20
 

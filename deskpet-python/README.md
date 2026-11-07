@@ -48,7 +48,7 @@ zhiling\
 │  │  ├─ _accept.py / test_workshop.py  工坊验收 / 测试
 │  │  └─ presets\             工坊参数预设（*.json，可入库）
 │  ├─ tests\                   纯逻辑测试（state_map / dsh_bridge 映射），`pytest -q` 运行
-│  ├─ v2_constants.py         跨端共享常量（13 状态 / 阈值 / 端口），与 Tauri 前端 shared.js 对齐
+│  ├─ shared_constants.py     跨端共享常量（13 状态 / 阈值 / 端口），与 Tauri 前端 shared.js 对齐
 │  └─ build\
 │     ├─ tools\                命令行工具（全部入库）
 │     │  ├─ pack.py            读写 pack 结构

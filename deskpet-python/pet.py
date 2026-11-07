@@ -34,6 +34,7 @@ from PyQt6.QtWidgets import (QApplication, QMenu, QWidget, QSystemTrayIcon, QDia
                              QGroupBox, QFileDialog, QTabBar, QStackedWidget)
 
 from state_map import StateMap
+from shared_constants import DEFAULT_DSH_WS_PORT, DEFAULT_STATE_PORT
 
 T0 = time.monotonic()
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -1660,7 +1661,7 @@ class BridgeAuto:
     就自动拉起 build/tools/dsh_bridge.py；子进程随桌宠退出一起清理，
     桥自身再用 --parent-pid 兜底，桌宠被强杀也不会留下孤儿。
     """
-    WS_PORT = 55471
+    WS_PORT = DEFAULT_DSH_WS_PORT
 
     def __init__(self, pet_port):
         self.pet_port = int(pet_port)
@@ -1677,7 +1678,7 @@ class BridgeAuto:
         self._timer.setInterval(5000)
         self._timer.timeout.connect(self._tick)
         self._timer.start()
-        log("bridge=auto watch 每 5s 检查一次 55471")
+        log("bridge=auto watch 每 5s 检查一次 %d" % self.WS_PORT)
 
     def _tick(self):
         if self.proc is not None:
@@ -1707,7 +1708,8 @@ class BridgeAuto:
     def maybe_start(self):
         if not self._listening(self.WS_PORT):
             if not self._skip_logged:
-                log("bridge=auto skip（55471 未监听：DSH 里插件没加载/没跑，稍后每 5s 复查）")
+                log("bridge=auto skip（%d 未监听：DSH 里插件没加载/没跑，稍后每 5s 复查）"
+                    % self.WS_PORT)
                 self._skip_logged = True
             return
         h = self._health()
@@ -2133,7 +2135,7 @@ class BridgeStatus(QObject):
     updated = pyqtSignal(dict)
 
     INTERVAL_MS = 2000
-    DEFAULT_WS_PORT = 55471
+    DEFAULT_WS_PORT = DEFAULT_DSH_WS_PORT     # 端口常量见 shared_constants（与 dsh_bridge / Tauri 共用）
 
     def __init__(self, pet, on_result, parent=None):
         super().__init__(parent)
@@ -2526,7 +2528,8 @@ class SettingsDialog(QDialog):
         tm.addWidget(pomo_box)
 
         conn_box = QGroupBox("DSH 链路")
-        conn_box.setToolTip("DSH 插件(:55471) → dsh_bridge.py → 桌宠 /state；只读显示，不额外探测端口")
+        conn_box.setToolTip("DSH 插件(:%d) → dsh_bridge.py → 桌宠 /state；只读显示，不额外探测端口"
+                            % DEFAULT_DSH_WS_PORT)
         cv = QVBoxLayout(conn_box)
         link = QHBoxLayout()
         self.dot_link = QLabel()
@@ -3308,9 +3311,10 @@ def main():
     ap.add_argument("--clip", default="", help="启动时直接播某个动作（调试用）")
     ap.add_argument("--state", default="", help="启动时强制进入某个状态（调试用：click/done/…）")
     ap.add_argument("--state-map", default="", help="状态映射配置路径（默认当前主题的 themes/<id>.json）")
-    ap.add_argument("--state-port", type=int, default=8765,
+    ap.add_argument("--state-port", type=int, default=DEFAULT_STATE_PORT,
                     help="监听本地 HTTP 状态输入：POST http://127.0.0.1:<port>/state"
-                         "（默认 8765，启动时自动桥接 DSH；传 0 关闭。只绑 127.0.0.1）")
+                         "（默认 %d，启动时自动桥接 DSH；传 0 关闭。只绑 127.0.0.1）"
+                         % DEFAULT_STATE_PORT)
     ap.add_argument("--state-file", default="",
                     help="轮询 JSON 状态文件（内容变化才应用；纯文本 streaming 也认）")
     ap.add_argument("--no-bridge", action="store_true",

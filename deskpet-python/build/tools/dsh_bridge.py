@@ -41,8 +41,8 @@ import time
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(BASE))
-sys.path.insert(0, ROOT)                       # 让 v2_constants 可从仓库根目录导入
-from v2_constants import (BRIDGE_TTL_BUSY_SEC, BRIDGE_TTL_ERROR_SEC,
+sys.path.insert(0, ROOT)                       # 让 shared_constants 可从仓库根目录导入
+from shared_constants import (BRIDGE_TTL_BUSY_SEC, BRIDGE_TTL_ERROR_SEC,
                          BRIDGE_STREAMING_PRIORITY, DEFAULT_DSH_WS_PORT,
                          DEFAULT_STATE_PORT)
 LOG_PATH = os.path.join(ROOT, "build", "cache", "dsh_bridge.log")

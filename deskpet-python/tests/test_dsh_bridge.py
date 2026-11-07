@@ -9,7 +9,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "build", "tools"))
 
-import v2_constants as C
+import shared_constants as C
 from dsh_bridge import map_event
 
 
@@ -131,7 +131,7 @@ def test_status_unknown_status_returns_none():
 
 
 def test_constants_used_in_map_event_match_module():
-    # map_event 里用到的 TTL/priority 必须来自 v2_constants，避免再次硬编码漂移
+    # map_event 里用到的 TTL/priority 必须来自 shared_constants，避免再次硬编码漂移
     assert C.BRIDGE_TTL_BUSY_SEC == 120
     assert C.BRIDGE_TTL_ERROR_SEC == 10
     assert C.BRIDGE_STREAMING_PRIORITY == 52
