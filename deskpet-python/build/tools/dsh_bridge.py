@@ -48,36 +48,36 @@ from shared_constants import (BRIDGE_TTL_BUSY_SEC, BRIDGE_TTL_ERROR_SEC,
 LOG_PATH = os.path.join(ROOT, "build", "cache", "dsh_bridge.log")
 os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
 VERBOSE = True
-MAX_LOG_LINES = 400          # 日志保留的最近行数，避免长期运行无限增长
+MAX_LOG_BYTES = 2 * 1024 * 1024   # 单文件上限 2 MB；归档固定 dsh_bridge.log.1（只留 1 份）
+_rotate_warned = False
 
 
-def _trim_log(max_lines=MAX_LOG_LINES):
-    """启动时把日志裁到最近 max_lines 行（保留最近 N 条）。"""
+def _rotate_log():
+    """超过 MAX_LOG_BYTES 就把日志轮转成 .1（只保留 1 份）；失败只告警一次，不崩。"""
+    global _rotate_warned
     try:
-        if not os.path.exists(LOG_PATH):
+        if not os.path.exists(LOG_PATH) or os.path.getsize(LOG_PATH) <= MAX_LOG_BYTES:
             return
-        with open(LOG_PATH, "r", encoding="utf-8", errors="ignore") as f:
-            lines = f.readlines()
-        if len(lines) <= max_lines:
-            return
-        with open(LOG_PATH, "w", encoding="utf-8") as f:
-            f.writelines(lines[-max_lines:])
+        bak = LOG_PATH + ".1"
+        try:
+            if os.path.exists(bak):
+                os.remove(bak)
+            os.replace(LOG_PATH, bak)
+        except OSError as e:
+            if not _rotate_warned:
+                _rotate_warned = True
+                if sys.stderr is not None:
+                    print("log rotate failed: %s" % e, file=sys.stderr)
     except OSError:
         pass
 
 
-_note_count = 0
-
-
 def note(msg):
-    global _note_count
     line = "%s %s" % (time.strftime("%Y-%m-%d %H:%M:%S"), msg)
     try:
+        _rotate_log()
         with open(LOG_PATH, "a", encoding="utf-8") as f:
             f.write(line + "\n")
-        _note_count += 1
-        if _note_count % 100 == 0:      # 长跑时定期裁掉老行，保留最近 N 条
-            _trim_log()
     except OSError:
         pass
     if VERBOSE and sys.stdout is not None:
@@ -468,13 +468,14 @@ def run(args):
                     last_sig = None
                     continue
                 sig = json.dumps(payload, sort_keys=True)
-                if sig == last_sig:      # 连续 token 不重复打日志，但仍转发（续期 TTL）
-                    if payload.get("state") != "streaming":
-                        continue
+                repeat = sig == last_sig   # 连续 token：仍转发（续期 TTL），但默认不重复落日志
+                if repeat and payload.get("state") != "streaming":
+                    continue
                 last_sig = sig
                 try:
                     code, body = post_state(args.pet_port, payload)
-                    note("POST /state %s -> %s %s" % (sig, code, body[:120]))
+                    if not repeat or args.verbose:
+                        note("POST /state %s -> %s %s" % (sig, code, body[:120]))
                 except OSError as e:
                     note("POST /state 失败（桌宠没带 --state-port %d？）: %s" % (args.pet_port, e))
                     break
@@ -507,7 +508,7 @@ def main():
     args = ap.parse_args()
     VERBOSE = args.verbose            # 真正尊重 --verbose；默认 False 才走「只写日志、不打屏」
     args.started = time.time()
-    _trim_log()
+    _rotate_log()
     if args.selftest:
         return selftest(args)
     if args.probe:

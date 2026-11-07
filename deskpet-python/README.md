@@ -213,6 +213,10 @@ wscript run.vbs --state-port 8766
 前置条件只有两个：DSH 已加载该插件（55471 在监听）、桌宠带了 `--state-port`。桥只连本机回环、无第三方依赖。
 `--probe` 会直接打印是「DSH 没广播」还是「桌宠没开端口」。不装插件就必须 DSH 侧自己发 HTTP 或写状态文件（见 4.1）。
 
+插件支持多个客户端：`sockets` 是 `Set`、广播遍历全部连接，所以 Python 版（桥）与 Tauri 版（内置客户端）
+可以同时接同一个插件。桌宠的自动桥只在 55471 未监听时等待，**不再**因为「插件上已有别的客户端」跳过；
+同一实例也不会重复拉起桥进程（桥异常退出会重拉）。
+
 #### 插件订阅与广播
 
 | 订阅的 DSH 事件 | 广播的 `type` |
@@ -254,13 +258,13 @@ wscript run.vbs --state-port 8766
 
 | 现象 | 先查什么 |
 | --- | --- |
-| `55471` 没监听 | 插件没加载：看 profile 登记与插件日志 `build\cache\dsh_bridge_plugin.log`（`DESHPET_PLUGIN_LOG` 可改路径；超 1MB 清空重写） |
+| `55471` 没监听 | 插件没加载：看 profile 登记与插件日志 `build\cache\dsh_bridge_plugin.log`（`DESHPET_PLUGIN_LOG` 可改路径；超 2 MB 轮转成 `.1`、只留 1 份；`config.debug=true` 才记每次广播与 token） |
 | 端口在监听但桌宠不动 | `dsh_bridge.py --probe`：分别打印 55471 与 8766 两端状态，并读插件 `/health` |
 | 不确定 DSH 有没有广播 | `dsh_bridge.py --selftest 20`：连 20 秒，打印事件条数与类型分布 |
-| 想看原始事件 | 桥日志 `build\cache\dsh_bridge.log`（保留最近 400 行，token 正文不落盘） |
+| 想看原始事件 | 桥日志 `build\cache\dsh_bridge.log`：超 2 MB 轮转成 `.1`（只留 1 份），token 正文不落盘；重复的 streaming 续期默认不记，加 `--verbose` 才逐条 |
 
 插件本体：仓库外 `C:\Users\<你>\.dsh\profiles\desktop\node_modules\@local\dsh-deskpet-bridge`
-（指向仓库 `zhiling\dsh-deskpet-bridge`，后者已 gitignore）。它在 `profiles\desktop\package.json` 里登记为依赖 + bundle；
+（`link:` 指向仓库 `zhiling\dsh-deskpet-bridge`，已纳入版本管理）。它在 `profiles\desktop\package.json` 里登记为依赖 + bundle；
 不装/未启用时 55471 不会监听，桥会一直重连——不影响桌宠本身，只是没有自动状态。
 改完 profile 必须**重启 DSH NEXT** 才生效。另：曾经同时登记的 `@local/dsh-probe` 指向已不存在的目录
 （broken junction），会让 bundle 链在它之后中断；已清理该 junction 与两条登记（备份在 `build\cache\dsh-profile-package.backup-20261105.json`）。

@@ -1658,9 +1658,10 @@ PLAYER_CACHE_PX = 480      # 播放器帧缓存长边：只缓存当前段，按
 class BridgeAuto:
     """桌宠自带的 DSH 桥托管。
 
-    --state-port 默认 8766（启动即自动桥接）：若 55471 在监听（插件已跑）且还没有别的桥连着，
-    就自动拉起 build/tools/dsh_bridge.py；子进程随桌宠退出一起清理，
-    桥自身再用 --parent-pid 兜底，桌宠被强杀也不会留下孤儿。
+    --state-port 默认 8766（启动即自动桥接）：只要 55471 在监听（插件已跑）就拉起
+    build/tools/dsh_bridge.py —— 不再看插件上「已有几个客户端」，所以 Python 与 Tauri
+    两版可以同时接同一个插件；本实例只保证自己不会重复拉起桥进程。
+    子进程随桌宠退出一起清理，桥自身再用 --parent-pid 兜底，桌宠被强杀也不会留下孤儿。
     """
     WS_PORT = DEFAULT_DSH_WS_PORT
 
@@ -1682,11 +1683,8 @@ class BridgeAuto:
         log("bridge=auto watch 每 5s 检查一次 %d" % self.WS_PORT)
 
     def _tick(self):
-        if self.proc is not None:
-            self._timer.stop()
-            return
         self.maybe_start()
-        if self.proc is not None:
+        if self.proc is not None and self.proc.poll() is None:
             self._timer.stop()
 
     @staticmethod
@@ -1697,32 +1695,24 @@ class BridgeAuto:
         except OSError:
             return False
 
-    @staticmethod
-    def _health():
-        try:
-            with urllib.request.urlopen(
-                    "http://127.0.0.1:%d/health" % BridgeAuto.WS_PORT, timeout=1.5) as r:
-                return json.loads(r.read().decode("utf-8", "ignore"))
-        except (OSError, ValueError):
-            return None
-
     def maybe_start(self):
+        if self.proc is not None and self.proc.poll() is None:
+            return                      # 自己的桥还活着，不重复拉起
+        if self.proc is not None:       # 桥意外退出：清记录，允许重拉
+            log("bridge=auto 旧桥已退出（pid=%d），重新拉起" % self.proc.pid)
+            self.proc = None
         if not self._listening(self.WS_PORT):
             if not self._skip_logged:
                 log("bridge=auto skip（%d 未监听：DSH 里插件没加载/没跑，稍后每 5s 复查）"
                     % self.WS_PORT)
                 self._skip_logged = True
             return
-        h = self._health()
-        if h and int(h.get("sockets") or 0) > 0:
-            log("bridge=auto skip（已有桥连着，sockets=%s）" % h.get("sockets"))
-            return
         script = os.path.join(ROOT, "build", "tools", "dsh_bridge.py")
         if not os.path.exists(script):
             log("bridge=auto skip（找不到 %s）" % script)
             return
         cmd = [sys.executable, script, "--pet-port", str(self.pet_port),
-               "--ws-port", str(self.WS_PORT), "--verbose",
+               "--ws-port", str(self.WS_PORT),
                "--parent-pid", str(os.getpid())]
         try:
             self.proc = subprocess.Popen(
