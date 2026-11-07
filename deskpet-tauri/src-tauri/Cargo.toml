@@ -5,6 +5,12 @@ description = "Desktop pet that bridges to DSH chat"
 authors = ["you"]
 edition = "2021"
 
+# 产物文件名（Windows 下即 ZhiLing.exe）。package.name 仍保持 deskpet-tauri，
+# 避免改动 crate 标识；可执行名只由这里决定。
+[[bin]]
+name = "ZhiLing"
+path = "src/main.rs"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

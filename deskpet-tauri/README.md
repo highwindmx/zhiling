@@ -1,4 +1,4 @@
-# DeskPet · Tauri 版
+# 智灵桌宠 · Tauri 版
 
 透明置顶的桌面桌宠：Rust（Tauri 2）+ 手写静态前端，**不使用 npm / vite**，`frontend/` 里的
 HTML/CSS/JS 直接作为 `frontendDist` 打包进 exe（几十 KB）；动画素材**运行期外置**，不塞进 exe。
@@ -22,7 +22,7 @@ deskpet-tauri/
 │  ├─ src/workshop.rs        # 素材工坊（抠像/裁边/导出）后端
 │  ├─ tauri.conf.json        # frontendDist=../frontend
 │  ├─ capabilities/default.json   # 窗口 main + settings + workshop
-│  └─ icons/icon.ico
+│  └─ icons/                 # 全尺寸图标（16–512 PNG + icon.ico + Square*Logo/StoreLogo）
 ├─ build/prepare_assets.py   # 准备运行期素材（纯标准库；不碰前端）
 └─ assets/                   # 运行期素材（--assets 产出，已忽略）
 ```
@@ -32,8 +32,8 @@ deskpet-tauri/
 exe 读取素材（packs）的优先级（第一个存在的胜出）：
 
 1. 环境变量 `DESKPET_PACKS`（绝对路径）
-2. 设置窗「连接」页里配置的 `packsDir`（存在 `%LOCALAPPDATA%\DeskPet\config.json`）
-3. `%LOCALAPPDATA%\DeskPet\packs`（默认位置，与 exe 放哪无关）
+2. 设置窗「状态与动画」页里的 `packsDir`（存在 `%LOCALAPPDATA%\ZhiLing\config.json`）
+3. `%LOCALAPPDATA%\ZhiLing\packs`（默认位置，与 exe 放哪无关）
 4. exe 同级的 `assets/`（旧发布形态，兼容）
 
 ```
@@ -72,19 +72,20 @@ packs/
 安装步骤：
 
 1. 下载素材压缩包（zip）。
-2. 解压到 **`%LOCALAPPDATA%\DeskPet\packs`**（在资源管理器地址栏粘贴
-   `%LOCALAPPDATA%\DeskPet\packs` 回车即可到达；目录不存在就先新建 `DeskPet\packs`）。
-3. 解压完直接双击 `deskpet-tauri.exe`，exe 放在哪个目录都可以。
+2. 解压到 **`%LOCALAPPDATA%\ZhiLing\packs`**（在资源管理器地址栏粘贴
+   `%LOCALAPPDATA%\ZhiLing\packs` 回车即可到达；目录不存在就先新建 `ZhiLing\packs`）。
+   首次运行若检测到旧 `%LOCALAPPDATA%\DeskPet` 有内容，会自动迁移到 `ZhiLing`（见根 README「共用规范」）。
+3. 解压完直接双击 `ZhiLing.exe`，exe 放在哪个目录都可以。
 
 > **不要解出 `packs\packs\...` 多套一层。** 压缩包里应该直接是 `themes\`、`animations\`、
-> `active.json`；解压后 `%LOCALAPPDATA%\DeskPet\packs\themes\*.json` 必须能直接看到。
+> `active.json`；解压后 `%LOCALAPPDATA%\ZhiLing\packs\themes\*.json` 必须能直接看到。
 > 若多套了一层，等于素材根目录里没有 `themes\`，启动会弹「启动失败」框。
 
-素材也可以放在别处：设置窗「连接」页的「素材目录」里浏览选择一个目录（写进
+素材也可以放在别处：设置窗「状态与动画」页的「素材目录」里浏览选择一个目录（写进
 `config.json` 的 `packsDir`），或用环境变量 `DESKPET_PACKS` 指定；两者都优先于默认位置。
 为兼容旧发布形态，exe 同级的 `assets\` 仍会被识别（解析顺序见上一节）。
 
-解压后的目录结构（`%LOCALAPPDATA%\DeskPet\packs`）：
+解压后的目录结构（`%LOCALAPPDATA%\ZhiLing\packs`）：
 
 ```
 packs/
@@ -109,34 +110,34 @@ packs/
 
 ### 验证装好了没
 
-1. 双击 `deskpet-tauri.exe`：能看到桌宠窗口（首次约 0.2~0.7s），待机动画在动；
+1. 双击 `ZhiLing.exe`：能看到桌宠窗口（首次约 0.9s），待机动画在动；
 2. 托盘/右键 →「设置」，在「状态与动画」页看到主题下拉里有素材包里的主题，左侧 13 个状态
    带首帧缩略图与绑定数量；
-3. 日志 `%LOCALAPPDATA%\DeskPet\deskpet.log` 里应出现
-   `packs_root=...\DeskPet\packs source=local exists=true themes=true animations=true`，
-   随后有 `boot theme=... assets=... idle=...` 与 `clip_start id=... loop=...`。
+3. 用 `DESKPET_LOG=1` 临时打开日志，之后 `%LOCALAPPDATA%\ZhiLing\deskpet.log` 里应出现
+   `packs_root=...\ZhiLing\packs source=local exists=true themes=true animations=true`，
+   随后有 `boot theme=... assets=... idle=...` 与 `clip_start id=... loop=...`（默认关闭日志时不会写这些）。
 
 ### 常见问题
 
 | 现象 | 原因 | 处理 |
 | --- | --- | --- |
-| 弹「知灵桌宠 · 启动失败」，日志 `fatal`，退出码 1 | 素材根目录里没有 `themes\` / `animations\` / 主题 JSON | 多为解压层级错（`packs\packs\themes`），把内层内容移到 `packs\` 根下 |
+| 弹「智灵桌宠 · 启动失败」，日志 `fatal`，退出码 1 | 素材根目录里没有 `themes\` / `animations\` / 主题 JSON | 多为解压层级错（`packs\packs\themes`），把内层内容移到 `packs\` 根下 |
 | 有桌宠但不动 / 待机空白 | `idle` 池为空：主题引用的动画目录缺失或 `meta.json` 的 id 对不上 | 核对 `animations/<assetId>/`，日志里看 `clip_start` 是否出现 |
-| 设置窗看不到主题 | `packsDir` 指向了错误目录（如指向了 `packs\themes`） | 设置 →「连接」页把「素材目录」改成 `...\DeskPet\packs` 再保存 |
-| 改了设置但重启又变回去 | `%LOCALAPPDATA%\DeskPet\config.json` 不可写或被独占 | 检查文件权限；程序用「临时文件 + 原子替换」写回，权限不足会在日志里报错 |
+| 设置窗看不到主题 | `packsDir` 指向了错误目录（如指向了 `packs\themes`） | 设置 →「状态与动画」页把「素材目录」改成 `...\ZhiLing\packs` 再保存 |
+| 改了设置但重启又变回去 | `%LOCALAPPDATA%\ZhiLing\config.json` 不可写或被独占 | 检查文件权限；程序用「临时文件 + 原子替换」写回，权限不足会在日志里报错 |
 | 换了素材但没生效 | 素材根被缓存到进程内 | 重启 exe；改 `packsDir` 保存后会自动重载 |
 
 ## 准备素材
 
 ```powershell
 python build/prepare_assets.py              # 只准备素材（等同 --assets）
-python build/prepare_assets.py --packs      # 素材生成到 %LOCALAPPDATA%\DeskPet\packs（默认位置）
+python build/prepare_assets.py --packs      # 素材生成到 %LOCALAPPDATA%\ZhiLing\packs（默认位置）
 python build/prepare_assets.py --packs D:\MyPacks   # 生成到指定 packs 根（直接含 themes/animations/active.json）
 python build/prepare_assets.py --assets     # 只准备素材到仓库内 assets/（旧布局/调试用）
 python build/prepare_assets.py --assets --out <exe 所在目录>  # 素材生成到 <该目录>/assets
 ```
 
-- `--packs` 不带值时写 `%LOCALAPPDATA%\DeskPet\packs`；带值时该参数就是**素材根本身**
+- `--packs` 不带值时写 `%LOCALAPPDATA%\ZhiLing\packs`；带值时该参数就是**素材根本身**
   （脚本直接在其中生成 `themes/`、`animations/`、`active.json`，不会再套一层）。
 - `--out` 传的是**父目录**，脚本在其中生成 `assets/`（只重建这个 `assets/` 子目录，绝不清空父目录）。
 - 源目录默认 `../deskpet-python/packs/`，找不到则回退仓库根的 `packs/`。
@@ -146,7 +147,7 @@ python build/prepare_assets.py --assets --out <exe 所在目录>  # 素材生成
 
 ## 运行期配置与日志
 
-- 配置与 Python 版**共用同一个文件**：`%LOCALAPPDATA%\DeskPet\config.json`（与素材目录无关，
+- 配置与 Python 版**共用同一个文件**：`%LOCALAPPDATA%\ZhiLing\config.json`（与素材目录无关，
   换素材不丢设置）。键名与 Python 侧一致：
 
   | 键 | 类型 | 默认 | 说明 |
@@ -161,10 +162,21 @@ python build/prepare_assets.py --assets --out <exe 所在目录>  # 素材生成
 - 写入方式是「读-改-写」：先读现有文件 → 深度合并本次修改 → 写 `config.json.tmp` 并 `sync`
   → 原子重命名替换。文件里 Python 版写入的其它键（含嵌套对象里的未知键）原样保留，不会被清掉。
 - 旧版 `deskpet-python\config.json` 的迁移由 Python 侧负责；Tauri 版只读共用文件，不做迁移。
-- 日志默认追加写 `%LOCALAPPDATA%\DeskPet\deskpet.log`（`DESKPET_LOG=<文件路径>` 可覆盖），
-  记录启动 pid/版本、`config_path`、素材根与来源、主题、状态切换、`clip_start`、菜单、外部输入。
+  旧用户目录 `%LOCALAPPDATA%\DeskPet` 由本版启动时一次性迁移到 `ZhiLing`（失败则继续用旧目录）。
+- **日志默认关闭**（生产不写常规日志），只保留致命错误（`fatal` / `panic` / 启动失败）与一次性迁移说明。
+  排障时用统一开关临时打开：
+
+  | `DESKPET_LOG` | 行为 |
+  | --- | --- |
+  | 未设置 / `0` / `off` / `false` / `no` | 关闭（默认） |
+  | `1` / `on` / `true` / `yes` | 打开，写 `%LOCALAPPDATA%\ZhiLing\deskpet.log` |
+  | 其它非空值 | 当作日志文件路径并打开（保留原有 `DESKPET_LOG=<路径>` 语义） |
+
+  打开后按大小轮转：单文件上限 **2 MB**，归档固定为 `deskpet.log.1`、只保留 1 份，
+  不按时间戳累积；轮转失败只告警一次，不影响启动。打开时才记录启动 pid/版本、`config_path`、
+  素材根与来源、主题、状态切换、`clip_start`、菜单、外部输入等常规事件。
 - **启动失败不再静默**：素材根缺失（无 `assets/`、`themes/*.json` 或 `animations/`）时弹原生
-  错误框「知灵桌宠 · 启动失败」、日志写 `fatal ...`、退出码 `1`；WebView2 运行时缺失或
+  错误框「智灵桌宠 · 启动失败」、日志写 `fatal ...`、退出码 `1`；WebView2 运行时缺失或
   Tauri 启动失败同样弹框 + 写日志。`/state` 端口被占用只记一行 `state_http bind ... 失败`，不退出。
 - 素材通过自定义协议 `deskpet://localhost/`（Windows 映射为 `http://deskpet.localhost/`）读取，
   只放行 `json/webp/png/jpg/jpeg/svg/mp4` 后缀并禁止 `..`。
@@ -224,20 +236,19 @@ python build/prepare_assets.py --assets --out <exe 所在目录>  # 素材生成
 
 ## 设置窗
 
-`frontend/settings.html` + `src/settings.js`，深色、顶栏页签分页：
+`frontend/settings.html` + `src/settings.js`，深色、顶栏只有**两个页签**：
 
-- 顶部只有标题 + 页签：**状态与动画 / 行为 / 提醒 / 连接**；右侧仍保留「尺寸」下拉与
-  「提醒状态常驻」勾选（这两个是全局开关，不随页签切换）。保存/关闭固定在底部右侧。
-- **状态与动画**页：最上方是「主题」下拉 + 重命名（先选主题，再看/改该主题的绑定）；下面是
-  13 个状态的列表（可拖拽或 ↑↓ 调整顺序，顺序即优先级，保存时按 `(n-1-i)*10` 重算 `priority`），
-  带启用勾选与首帧缩略图；右栏是选中状态的动作池（每段可预览、上移、下移、移除；「从动作库添加」
-  弹窗，「新建动画」调用 Python 版工坊）。
-- **行为**页：尺寸档位说明、交互说明（双击/单击/右键/悬停）。
-- **提醒**页：番茄钟总开关与专注/休息时长、当前计时状态、提醒常驻说明。
-- **连接**页：素材目录（可浏览选择，留空 = 默认位置）+ 当前生效目录与校验、`/state` 端口与最近
-  外部状态、日志路径。
+- 顶部：标题 + 页签 **状态与动画 / 提醒与连接**；右侧保留「尺寸」下拉与「提醒状态常驻」勾选
+  （全局开关，不随页签切换）。「恢复上次配置 / 保存配置 / 取消」固定在底部。
+- **状态与动画**页：最上方是「主题」下拉 + 「重命名主题…」+「新建主题…」（先选主题，再看/改该主题的绑定）；
+  下面是 13 个状态列表（可拖拽或 ↑↓ 调整顺序，顺序即优先级，保存时按 `(n-1-i)*10` 重算 `priority`），
+  带首帧缩略图与绑定数量；右栏是选中状态的动作池（每段可预览、上移、下移、移除；「从动作库添加」
+  弹窗，「新建动画」打开本版内置工坊）。底部「素材与工具」只有**素材目录**（只读路径 + 浏览/恢复默认，
+  写入 `config.json:packsDir`）。
+- **提醒与连接**页：番茄钟总开关、专注 / 休息时长、当前计时；DSH 链路状态灯、地址、最近事件、
+  订阅端口（默认 55471，0 = 关闭）与「重新检测」；对外 HTTP 入口地址 / 端口与最近状态。
 - 底部保存：写 `packs/themes/<id>.json`（保留未知字段、强制 `version: 2`、备份到 `packs/.backup/`），
-  同时把 `tier` / `remindHold` / `packsDir` / `pomodoro` 合并进共用 `config.json`。
+  同时把 `tier` / `remindHold` / `packsDir` / `pomodoro` / `dshPort` 合并进共用 `config.json`。
 
 ## 构建
 
@@ -251,9 +262,9 @@ cargo build --release --target-dir "$env:TEMP\deskpet-target"
 
 ### 图标
 
-`src-tauri/icons/` 由 `build/make_icons.py` 生成（复刻 Python 版 `make_icon.py`：`#6D4BD6`
-圆角矩形 + 白「宠」字），每个尺寸独立渲染（小尺寸按倍数超采样后缩回，不放大糊图），
-颜色/像素与 `deskpet-python/assets/icon.ico` 的对应尺寸逐像素一致。
+`src-tauri/icons/` 由 `build/make_icons.py` 生成（与 Python 版 `make_icon.py` 同一套参数：`#6D4BD6`
+圆角矩形 + 黑体白色「灵」字），每个尺寸独立渲染（小尺寸按倍数超采样后缩回，不放大糊图），
+颜色/像素与 `deskpet-python/assets/icon.ico` 的对应尺寸逐像素一致（16–256 全档已比对）。
 
 ```powershell
 uv run --project ..\deskpet-python python build\make_icons.py
@@ -287,33 +298,33 @@ cargo build --release --target-dir "$env:TEMP\deskpet-build-target"
 ### 构建完怎样双击就能跑
 
 exe **不内嵌素材**（只内嵌前端），但素材也不再要求放在 exe 同级：装到默认位置
-`%LOCALAPPDATA%\DeskPet\packs` 后，exe 放哪个目录都能跑。
+`%LOCALAPPDATA%\ZhiLing\packs` 后，exe 放哪个目录都能跑。
 
 ```powershell
-# 1. 构建（用临时 target 避开 ACL；产物在 $env:TEMP\deskpet-build-target\release\deskpet-tauri.exe）
+# 1. 构建（用临时 target 避开 ACL；产物在 $env:TEMP\deskpet-build-target\release\ZhiLing.exe）
 cargo build --release --manifest-path "$env:TEMP\deskpet-build\src-tauri\Cargo.toml" `
   --target-dir "$env:TEMP\deskpet-build-target"
-# 3. 素材装到默认位置（不带值时就是 %LOCALAPPDATA%\DeskPet\packs）
+# 2. 素材装到默认位置（不带值时就是 %LOCALAPPDATA%\ZhiLing\packs）
 python build\prepare_assets.py --packs
-# 4. 把 exe 拷到任意目录（这里以 D:\DeskPet 为例），双击即可
-New-Item -ItemType Directory -Force D:\DeskPet | Out-Null
-Copy-Item "$env:TEMP\deskpet-build-target\release\deskpet-tauri.exe" D:\DeskPet\
+# 3. 把 exe 拷到任意目录（这里以 D:\ZhiLing 为例），双击即可
+New-Item -ItemType Directory -Force D:\ZhiLing | Out-Null
+Copy-Item "$env:TEMP\deskpet-build-target\release\ZhiLing.exe" D:\ZhiLing\
 ```
 
 运行所需的只有两处：
 
 ```
-%LOCALAPPDATA%\DeskPet\packs\     # 素材（必需）
+%LOCALAPPDATA%\ZhiLing\packs\    # 素材（必需）
 ├─ themes\*.json
 ├─ animations\<assetId>\meta.json + fNNNN.webp
 └─ active.json                   # 可选，缺失会自动重建
-D:\DeskPet\deskpet-tauri.exe      # 程序，放哪都行
+D:\ZhiLing\ZhiLing.exe      # 程序，放哪都行
 ```
 
-起来后会先看到桌宠窗口（约 0.2~0.7s），托盘图标在 Win11 默认收进「隐藏的图标」溢出区，
+起来后会先看到桌宠窗口（约 0.9s），托盘图标在 Win11 默认收进「隐藏的图标」溢出区，
 点任务栏托盘的小箭头才看得到（可拖出来固定）。素材缺失时会被自检拦下：弹
-「知灵桌宠 · 启动失败」框、退出码 1、日志记 `fatal`（先查 `packs_root=... source=...` 那行）。
-如果确实想沿用旧形态，也可以把素材生成到 exe 同级：`python build\prepare_assets.py --assets --out D:\DeskPet`
+「智灵桌宠 · 启动失败」框、退出码 1、日志记 `fatal`（先查 `packs_root=... source=...` 那行）。
+如果确实想沿用旧形态，也可以把素材生成到 exe 同级：`python build\prepare_assets.py --assets --out D:\ZhiLing`
 （解析顺序里 exe 同级 `assets\` 排最后兜底）。
 
 ### 改了前端却像没生效
@@ -331,6 +342,24 @@ cargo 并不总能感知 `frontend/` 目录变化，所以有时要强制本 cra
 
 否则 exe 里跑的还是旧 JS（典型症状：页面白屏、控制台报旧版本的 `SyntaxError`、`__deskpetPick` 未定义）。
 
+### 换了图标却像没生效
+
+`icons/icon.ico` 由 `tauri-build` 写进 `resource.rc`（`32512 ICON "<绝对路径>"`）再编译成 `resource.lib`
+链接进 exe。但构建脚本的 `rerun-if-changed` 只有 `tauri.conf.json`、`capabilities/`、`sample-pack/`
+（见 `target\release\.fingerprint\deskpet-tauri-*\run-build-script-build-script-build.json`），
+**`icons/` 不在其中**：只改图标、不动其它文件时 `cargo build` 会复用旧的 `resource.lib`。
+
+```powershell
+# 换图标后强制本 crate 的构建脚本重跑（任选其一）
+(Get-Item src-tauri\build.rs).LastWriteTime = Get-Date
+Remove-Item src-tauri\target\release\build\deskpet-tauri-*\out\resource.lib -Force
+```
+
+另外注意展示层：主窗口是 `skipTaskbar: true` + `decorations: false`，任务栏和标题栏都不显示图标，
+**唯一可见的图标是托盘图标**，取自编译期嵌入的 `icons/32x32.png`（`main.rs` 的 `default_window_icon()`），
+进程启动时注册——旧实例不退出就不会换图。资源管理器里文件图标仍显示旧的，则是 shell 图标缓存：
+`ie4uinit.exe -show`，必要时重启 explorer。
+
 ## 环境变量
 
 | 变量 | 作用 |
@@ -339,7 +368,7 @@ cargo 并不总能感知 `frontend/` 目录变化，所以有时要强制本 cra
 | `DESKPET_STATE_PORT` | `/state` HTTP 端口，默认 `8765`，`0` 关闭 |
 | `DESKPET_STATE_FILE` | 外部状态文件路径，500ms 轮询（内容变化才投递） |
 | `DESKPET_WORKSHOP` | 已废弃：Tauri 版内置素材工坊（src/workshop.rs + workshop.html），不再外拉 `workshop.bat` |
-| `DESKPET_LOG` | 日志文件路径（追加写），默认 `%LOCALAPPDATA%\DeskPet\deskpet.log` |
+| `DESKPET_LOG` | 日志开关：未设置/`0`/`off` = 关闭（默认）；`1`/`on`/`true` = 打开并写 `%LOCALAPPDATA%\ZhiLing\deskpet.log`；其它值 = 日志文件路径 |
 
 ## 与 Python 版的差异
 
@@ -353,7 +382,7 @@ cargo 并不总能感知 `frontend/` 目录变化，所以有时要强制本 cra
 
 ## 排错
 
-- 启动黑屏/无动画：先看 `%LOCALAPPDATA%\DeskPet\deskpet.log`（或 `DESKPET_LOG` 指定的文件）里的
+- 启动黑屏/无动画：先用 `DESKPET_LOG=1` 打开日志，再看 `%LOCALAPPDATA%\ZhiLing\deskpet.log`（或 `DESKPET_LOG` 指定的文件）里的
   `packs_root=... source=... exists=... themes=... animations=...`，再确认是否出现
   `clip_start id=... loop=...` 与 `boot theme=... assets=... idle=...`；没有 `idle`
   说明待机池为空。出现 `fatal 找不到素材目录` 说明素材根解析错了（见「获取与安装素材包」）。

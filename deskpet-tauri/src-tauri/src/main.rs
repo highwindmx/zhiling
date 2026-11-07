@@ -1,4 +1,4 @@
-// DeskPet Tauri 后端：透明窗口 + 托盘 + 设置窗 + 外部状态入口。
+// ZhiLing Tauri 后端：透明窗口 + 托盘 + 设置窗 + 外部状态入口。
 // 播放与状态机全在 frontend/src/main.js；前后端只通过少量命令通信，
 // 尺寸与定位统一在这里按物理像素计算，避免 WebView 的 CSS 像素 / DPI 换算误差。
 //
@@ -32,28 +32,185 @@ static LAST_STATE: Mutex<String> = Mutex::new(String::new());
 static LAST_PLAYING: Mutex<String> = Mutex::new(String::new());
 
 const STATE_PORT_DEFAULT: u16 = 8765;
+const APP_DIR: &str = "ZhiLing";          // %LOCALAPPDATA%\ZhiLing
+const LEGACY_APP_DIR: &str = "DeskPet";   // 旧默认根，首次运行自动迁移过来
+const LOG_MAX_BYTES: u64 = 2 * 1024 * 1024;
+/// 默认日志根：%LOCALAPPDATA%\ZhiLing（迁移失败时退回旧目录）。
+static APP_ROOT: OnceLock<Option<PathBuf>> = OnceLock::new();
+/// 迁移说明缓存：日志系统就绪前先攒着，启动后统一写一条。
+static ROOT_NOTES: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
-fn log_path() -> &'static PathBuf {
-    static P: OnceLock<PathBuf> = OnceLock::new();
-    P.get_or_init(|| {
-        if let Ok(p) = std::env::var("DESKPET_LOG") {
-            if !p.trim().is_empty() {
-                return PathBuf::from(p);
-            }
-        }
-        // release 版没有控制台，默认也要留痕：%LOCALAPPDATA%\DeskPet\deskpet.log
-        let base = std::env::var("LOCALAPPDATA")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| std::env::temp_dir());
-        base.join("DeskPet").join("deskpet.log")
-    })
+fn local_base() -> Option<PathBuf> {
+    std::env::var("LOCALAPPDATA")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var("USERPROFILE")
+                .ok()
+                .filter(|s| !s.trim().is_empty())
+                .map(|h| PathBuf::from(h).join("AppData").join("Local"))
+        })
 }
 
-pub(crate) fn log_line(msg: &str) {
-    let path = log_path();
+fn dir_entries(path: &Path) -> Vec<PathBuf> {
+    std::fs::read_dir(path)
+        .map(|rd| rd.flatten().map(|e| e.path()).collect())
+        .unwrap_or_default()
+}
+
+enum RootState {
+    Skipped,
+    Migrated(usize),
+    Failed(String),
+}
+
+/// 旧 %LOCALAPPDATA%\DeskPet → 新 %LOCALAPPDATA%\ZhiLing：
+/// 新根不存在（或为空）且旧目录有内容时，同盘 rename 整目录；失败再逐项 rename，
+/// 任一项失败就回滚并继续用旧目录，绝不让迁移失败拖垮启动。
+fn migrate_user_root(new_root: &Path, legacy: &Path) -> RootState {
+    if !dir_entries(new_root).is_empty() {
+        return RootState::Skipped;
+    }
+    let names: Vec<String> = std::fs::read_dir(legacy)
+        .map(|rd| {
+            rd.flatten()
+                .map(|e| e.file_name().to_string_lossy().to_string())
+                .collect()
+        })
+        .unwrap_or_default();
+    if names.is_empty() {
+        return RootState::Skipped;
+    }
+    if new_root.is_dir() {
+        let _ = std::fs::remove_dir(new_root); // 空目录先去掉，避免 rename 报「已存在」
+    }
+    if std::fs::rename(legacy, new_root).is_ok() {
+        return RootState::Migrated(names.len());
+    }
+    if let Err(e) = std::fs::create_dir_all(new_root) {
+        return RootState::Failed(e.to_string());
+    }
+    let mut moved: Vec<(PathBuf, PathBuf)> = Vec::new();
+    let mut error = String::new();
+    for name in &names {
+        let src = legacy.join(name);
+        let dst = new_root.join(name);
+        match std::fs::rename(&src, &dst) {
+            Ok(()) => moved.push((dst, src)),
+            Err(e) => {
+                error = e.to_string();
+                break;
+            }
+        }
+    }
+    if moved.len() != names.len() {
+        for (dst, src) in moved {
+            let _ = std::fs::rename(&dst, &src);
+        }
+        return RootState::Failed(error);
+    }
+    RootState::Migrated(names.len())
+}
+
+fn ensure_app_root() -> Option<PathBuf> {
+    APP_ROOT
+        .get_or_init(|| {
+            let base = local_base()?;
+            let new_root = base.join(APP_DIR);
+            let legacy = base.join(LEGACY_APP_DIR);
+            let state = migrate_user_root(&new_root, &legacy);
+            let (effective, note, failed) = match state {
+                RootState::Migrated(n) => (
+                    new_root.clone(),
+                    format!(
+                        "user_root_migrate {} → {}（迁移 {} 项）",
+                        legacy.display(),
+                        new_root.display(),
+                        n
+                    ),
+                    false,
+                ),
+                RootState::Failed(err) => (
+                    legacy.clone(),
+                    format!(
+                        "user_root_migrate 失败: {} → {} err={}；继续使用旧目录 {}",
+                        legacy.display(),
+                        new_root.display(),
+                        err,
+                        legacy.display()
+                    ),
+                    true,
+                ),
+                RootState::Skipped => (new_root.clone(), String::new(), false),
+            };
+            if !note.is_empty() {
+                if let Ok(mut g) = ROOT_NOTES.lock() {
+                    g.push(note);
+                }
+            }
+            Some(if failed && legacy.is_dir() { legacy } else { effective })
+        })
+        .clone()
+}
+
+/// 日志开关与落点：DESKPET_LOG 未设置 = 关闭（生产默认不写）；
+/// 1/on/true/yes = 打开并写默认位置；0/off/false/no = 关闭；其它非空值 = 文件路径。
+fn log_switch() -> (bool, PathBuf) {
+    static S: OnceLock<(bool, PathBuf)> = OnceLock::new();
+    S.get_or_init(|| {
+        let default = ensure_app_root()
+            .unwrap_or_else(std::env::temp_dir)
+            .join("deskpet.log");
+        let raw = std::env::var("DESKPET_LOG").unwrap_or_default();
+        let v = raw.trim();
+        if v.is_empty() {
+            return (false, default);
+        }
+        match v.to_ascii_lowercase().as_str() {
+            "0" | "off" | "false" | "no" => (false, default),
+            "1" | "on" | "true" | "yes" => (true, default),
+            _ => (true, PathBuf::from(v)),
+        }
+    })
+    .clone()
+}
+
+fn log_path() -> PathBuf {
+    log_switch().1
+}
+
+/// 超过 2 MB 就轮转成 deskpet.log.1（只保留 1 份）；失败只告警一次，不影响主流程。
+fn rotate_log(path: &Path) {
+    static WARNED: AtomicBool = AtomicBool::new(false);
+    let too_big = std::fs::metadata(path)
+        .map(|m| m.len() > LOG_MAX_BYTES)
+        .unwrap_or(false);
+    if !too_big {
+        return;
+    }
+    let bak = PathBuf::from(format!("{}.1", path.display()));
+    let _ = std::fs::remove_file(&bak);
+    if let Err(e) = std::fs::rename(path, &bak) {
+        if !WARNED.swap(true, Ordering::SeqCst) {
+            eprintln!("log rotate failed: {e}");
+            // release 无控制台：把这一条告警直接追加进日志，保证「有记录」且只记一次
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)
+            {
+                let _ = writeln!(f, "[log] rotate failed: {e}");
+            }
+        }
+    }
+}
+
+fn write_log(path: &Path, msg: &str) {
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
+    rotate_log(path);
     if let Ok(mut f) = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -61,6 +218,20 @@ pub(crate) fn log_line(msg: &str) {
     {
         let _ = writeln!(f, "{}", msg);
     }
+}
+
+/// 常规事件日志：默认关闭（DESKPET_LOG=1 打开）。
+pub(crate) fn log_line(msg: &str) {
+    let (on, path) = log_switch();
+    if on {
+        write_log(&path, msg);
+    }
+}
+
+/// 致命错误：默认也写一条，保证 release 无控制台时崩溃有据可查。
+fn log_critical(msg: &str) {
+    let (_, path) = log_switch();
+    write_log(&path, msg);
 }
 
 fn elapsed_ms() -> u128 {
@@ -97,8 +268,8 @@ fn message_box(title: &str, text: &str) {
 }
 
 fn fatal(msg: &str) -> ! {
-    log_line(&format!("fatal {}", msg));
-    message_box("知灵桌宠 · 启动失败", msg);
+    log_critical(&format!("fatal {}", msg));
+    message_box("智灵桌宠 · 启动失败", msg);
     std::process::exit(1);
 }
 
@@ -106,7 +277,7 @@ fn fatal(msg: &str) -> ! {
 fn assets_problem(root: &Path) -> Option<String> {
     if !root.is_dir() {
         return Some(format!(
-            "找不到素材（packs）目录：{}\n\n解析顺序：\n  1. 环境变量 DESKPET_PACKS\n  2. 设置里的「素材目录」\n  3. %LOCALAPPDATA%\\DeskPet\\packs\n  4. exe 同级的 assets\\（旧布局兼容）\n\n生成素材：python build\\prepare_assets.py --packs <目录>\n也可以在设置窗里浏览选择一个已生成的素材目录。\n\n素材应包含：\n  themes\\*.json\n  animations\\<id>\\meta.json + fNNNN.webp\n  active.json",
+            "找不到素材（packs）目录：{}\n\n解析顺序：\n  1. 环境变量 DESKPET_PACKS\n  2. 设置里的「素材目录」\n  3. %LOCALAPPDATA%\\ZhiLing\\packs\n  4. exe 同级的 assets\\（旧布局兼容）\n\n生成素材：python build\\prepare_assets.py --packs <目录>\n也可以在设置窗里浏览选择一个已生成的素材目录。\n\n素材应包含：\n  themes\\*.json\n  animations\\<id>\\meta.json + fNNNN.webp\n  active.json",
             root.display()
         ));
     }
@@ -144,19 +315,9 @@ fn assets_problem(root: &Path) -> Option<String> {
 // 因此 tauri.conf.json 不需要开任何 scope（详见 README「素材外置」）。
 static PACK_ROOT: Mutex<Option<PathBuf>> = Mutex::new(None);
 
-/// 默认素材目录：%LOCALAPPDATA%\DeskPet\packs（与 exe 位置无关）。
+/// 默认素材目录：%LOCALAPPDATA%\ZhiLing\packs（与 exe 位置无关）。
 fn default_packs_dir() -> Option<PathBuf> {
-    let base = std::env::var("LOCALAPPDATA")
-        .ok()
-        .filter(|s| !s.trim().is_empty())
-        .map(PathBuf::from)
-        .or_else(|| {
-            std::env::var("USERPROFILE")
-                .ok()
-                .filter(|s| !s.trim().is_empty())
-                .map(|h| PathBuf::from(h).join("AppData").join("Local"))
-        })?;
-    Some(base.join("DeskPet").join("packs"))
+    ensure_app_root().map(|p| p.join("packs"))
 }
 
 fn exe_assets_dir() -> PathBuf {
@@ -167,7 +328,7 @@ fn exe_assets_dir() -> PathBuf {
         .join("assets")
 }
 
-/// 素材根解析：DESKPET_PACKS → 设置里的 packsDir → %LOCALAPPDATA%\DeskPet\packs → exe 同级 assets。
+/// 素材根解析：DESKPET_PACKS → 设置里的 packsDir → %LOCALAPPDATA%\ZhiLing\packs → exe 同级 assets。
 fn resolve_pack_root() -> PathBuf {
     let mut cands: Vec<PathBuf> = Vec::new();
     if let Ok(p) = std::env::var("DESKPET_PACKS") {
@@ -216,7 +377,7 @@ pub(crate) fn animations_dir() -> PathBuf {
     asset_root().join("animations")
 }
 
-/// 配置独立于素材目录：%LOCALAPPDATA%\DeskPet\config.json（换素材不丢设置）。
+/// 配置独立于素材目录：%LOCALAPPDATA%\ZhiLing\config.json（换素材不丢设置）。
 /// `DESKPET_CONFIG` 可覆盖（调试/多套配置并存时用），默认与该 Python 版共用同一份。
 fn config_path() -> PathBuf {
     if let Ok(p) = std::env::var("DESKPET_CONFIG") {
@@ -224,13 +385,12 @@ fn config_path() -> PathBuf {
             return PathBuf::from(p.trim());
         }
     }
-    let base = std::env::var("LOCALAPPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| std::env::temp_dir());
-    base.join("DeskPet").join("config.json")
+    ensure_app_root()
+        .unwrap_or_else(std::env::temp_dir)
+        .join("config.json")
 }
 
-// 配置与 deskpet-python 共用 %LOCALAPPDATA%\DeskPet\config.json。
+// 配置与 deskpet-python 共用 %LOCALAPPDATA%\ZhiLing\config.json。
 // 旧 deskpet-python\config.json 的迁移由 Python 侧负责，这里只读共用文件、不做迁移。
 
 /// 设置里选的素材目录（config.json 的 packsDir）；空/缺失返回 None。
@@ -379,7 +539,7 @@ async fn pick_packs_dir() -> Result<String, String> {
     pick_folder_native("选择素材（packs）目录").map(|p| p.display().to_string())
 }
 
-/// 清掉 packsDir 后按 DESKPET_PACKS → Documents\DeskPet\packs → exe 同级 assets 解析。
+/// 清掉 packsDir 后按 DESKPET_PACKS → %LOCALAPPDATA%\ZhiLing\packs → exe 同级 assets 解析。
 fn resolve_default_pack_root() -> PathBuf {
     let mut cands: Vec<PathBuf> = Vec::new();
     if let Ok(p) = std::env::var("DESKPET_PACKS") {
@@ -1378,7 +1538,7 @@ fn update_pomo_item(app: &AppHandle, status: &PomoStatus) {
         }
     }
     if let Some(tray) = app.tray_by_id("tray") {
-        let _ = tray.set_tooltip(Some(format!("知灵桌宠 · {}", status.text)));
+        let _ = tray.set_tooltip(Some(format!("智灵桌宠 · {}", status.text)));
     }
 }
 
@@ -1596,7 +1756,7 @@ fn build_tray_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
 fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
     let menu = build_tray_menu(app)?;
     let mut builder = TrayIconBuilder::with_id("tray")
-        .tooltip("知灵桌宠")
+        .tooltip("智灵桌宠")
         .menu(&menu)
         .show_menu_on_left_click(true)
         .on_tray_icon_event(|tray, event| {
@@ -1629,7 +1789,7 @@ fn open_settings_window(app: &AppHandle) -> Result<(), String> {
         return Ok(());
     }
     let w = WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("settings.html".into()))
-        .title("知灵桌宠 · 设置")
+        .title("智灵桌宠 · 设置")
         .inner_size(1040.0, 760.0)
         .min_inner_size(880.0, 600.0)
         .resizable(true)
@@ -1699,7 +1859,7 @@ fn open_workshop_window(app: &AppHandle) -> Result<(), String> {
         ));
     }
     let mut b = WebviewWindowBuilder::new(app, "workshop", WebviewUrl::App("workshop.html".into()))
-        .title("知灵桌宠 · 素材工坊")
+        .title("智灵桌宠 · 素材工坊")
         .inner_size(ww, wh)
         .min_inner_size(720.0_f64.min(ww), 520.0_f64.min(wh))
         .resizable(true)
@@ -1772,17 +1932,22 @@ fn dispatch_menu(app: &AppHandle, id: &str) {
 
 fn main() {
     START.get_or_init(Instant::now);
+    // 先完成 %LOCALAPPDATA%\DeskPet → ZhiLing 的一次性迁移，再解析日志/配置/素材路径。
+    ensure_app_root();
     std::panic::set_hook(Box::new(|info| {
-        let msg = format!("panic: {}", info);
-        log_line(&msg);
-        message_box("知灵桌宠 · 崩溃", &msg);
+        log_critical(&format!("panic: {}", info));
+        message_box("智灵桌宠 · 崩溃", &format!("panic: {}", info));
     }));
-    log_line(&format!(
+    log_critical(&format!(
         "app_start pid={} version={}",
         std::process::id(),
         env!("CARGO_PKG_VERSION")
     ));
-    log_line(&format!("log_path={}", log_path().display()));
+    // 迁移只有一次，日志关闭也留一条说明（失败时还要说明继续用旧目录）。
+    for note in ROOT_NOTES.lock().map(|g| g.clone()).unwrap_or_default() {
+        log_critical(&note);
+    }
+    log_line(&format!("log_path={}（轮转 2MB×1）", log_path().display()));
     log_line(&format!("config_path={}", config_path().display()));
     let root = asset_root();
     let source = if std::env::var("DESKPET_PACKS")
@@ -1891,8 +2056,8 @@ fn main() {
                 "Tauri 启动失败：{}\n\n常见原因：缺少 WebView2 运行时（安装 Microsoft Edge WebView2 Runtime 后重试）。",
                 e
             );
-            log_line(&format!("fatal {}", msg));
-            message_box("知灵桌宠 · 启动失败", &msg);
+            log_critical(&format!("fatal {}", msg));
+            message_box("智灵桌宠 · 启动失败", &msg);
             std::process::exit(1);
         });
 }

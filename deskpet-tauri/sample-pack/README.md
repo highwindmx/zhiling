@@ -1,7 +1,7 @@
 # sample-pack（自带最小示例素材）
 
-首次运行且 `%LOCALAPPDATA%\DeskPet\packs` 里没有任何主题时，程序会把这里的文件按原样释放到
-`%LOCALAPPDATA%\DeskPet\packs`（已存在的一律跳过，不覆盖用户数据），保证「至少能出画面」。
+首次运行且 `%LOCALAPPDATA%\ZhiLing\packs` 里没有任何主题时，程序会把这里的文件按原样释放到
+`%LOCALAPPDATA%\ZhiLing\packs`（已存在的一律跳过，不覆盖用户数据），保证「至少能出画面」。
 
 - `themes/sample.json`：示例主题（id `pack`/theme 均为 `sample`），只绑定 `idle`。
 - `animations/sample_idle/meta.json`：一段 128×128 的单帧待机画面。
@@ -13,5 +13,5 @@
 `animations/sample_idle/f0000.png … fNNNN.png|webp` 和 `meta.json`（`count`/`format` 对应上）
 放进本目录，然后重新编译即可，无需改代码。
 
-完整素材包请安装到 `%LOCALAPPDATA%\DeskPet\packs`，详见仓库 README 的
-「获取与安装素材包」一节。
+完整素材包请安装到 `%LOCALAPPDATA%\ZhiLing\packs`，详见仓库根 README 的
+「共用规范 · 安装素材包」一节。

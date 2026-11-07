@@ -1,7 +1,7 @@
-"""生成 Tauri 图标集：紫色圆角矩形 + 黑体「宠」字（与 Python 版 make_icon.py 同一套参数）。
+"""生成 Tauri 图标集：紫色圆角矩形 + 黑体白色「灵」字（与 Python 版 make_icon.py 同一套参数）。
 
 每个尺寸独立渲染（小尺寸 8× 超采样后 LANCZOS 落回），不从小图放大，也不从 512 缩到底，
-保证 16×16 托盘图标里「宠」仍然可辨。多尺寸 .ico 由本脚本手写容器，每个档位写入自己渲染的 PNG。
+保证 16×16 托盘图标里「灵」仍然可辨。多尺寸 .ico 由本脚本手写容器，每个档位写入自己渲染的 PNG。
 
 用法（需要 Pillow，可用 Python 版的项目环境）：
     uv run --project ../deskpet-python python build/make_icons.py
@@ -23,7 +23,7 @@ ICONS = os.path.join(ROOT, "src-tauri", "icons")
 
 BG_COLOR = "#6D4BD6"       # 与 Python 版一致
 RADIUS_RATIO = 0.22
-TEXT = "宠"
+TEXT = "灵"
 TEXT_COLOR = "#FFFFFF"
 TEXT_HEIGHT_RATIO = 0.74
 
@@ -58,7 +58,7 @@ def supersample(size):
 
 
 def render(size, font_path):
-    """在 size×size 的透明画布上独立绘制圆角矩形 + 居中「宠」。"""
+    """在 size×size 的透明画布上独立绘制圆角矩形 + 居中「灵」。"""
     ss = supersample(size)
     s = size * ss
     img = Image.new("RGBA", (s, s), (0, 0, 0, 0))

@@ -163,10 +163,10 @@ def tree_size(path):
 
 
 def find_tauri_exe():
-    cands = glob.glob(os.path.join(PROJECT, "src-tauri", "target", "release", "deskpet-tauri.exe"))
-    cands += glob.glob(os.path.join(TMP, "deskpet-tauri-target", "release", "deskpet-tauri.exe"))
+    cands = glob.glob(os.path.join(PROJECT, "src-tauri", "target", "release", "ZhiLing.exe"))
+    cands += glob.glob(os.path.join(TMP, "deskpet-tauri-target", "release", "ZhiLing.exe"))
     if not cands:
-        raise SystemExit("找不到 release 版 deskpet-tauri.exe，先 cargo build --release")
+        raise SystemExit("找不到 release 版 ZhiLing.exe，先 cargo build --release")
     return max(cands, key=os.path.getmtime)
 
 
@@ -316,7 +316,7 @@ def breakdown(samples, roles):
 # ---- 两个被测目标 ---------------------------------------------------------
 def bench_tauri(seconds):
     exe = find_tauri_exe()
-    for p in ("deskpet-tauri.exe",):
+    for p in ("ZhiLing.exe", "deskpet-tauri.exe"):
         subprocess.run(["taskkill", "/IM", p, "/F"], capture_output=True)
     time.sleep(0.3)
     if os.path.exists(TAURI_LOG):
@@ -349,7 +349,7 @@ def bench_tauri(seconds):
         proc.wait(5)
     except subprocess.TimeoutExpired:
         proc.kill()
-    subprocess.run(["taskkill", "/IM", "deskpet-tauri.exe", "/F"], capture_output=True)
+    subprocess.run(["taskkill", "/IM", "ZhiLing.exe", "/F"], capture_output=True)
     return res
 
 

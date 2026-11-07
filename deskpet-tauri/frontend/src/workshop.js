@@ -15,7 +15,7 @@ async function invoke(cmd, args = {}) {
   const t = T();
   if (t && t.core && typeof t.core.invoke === "function") return t.core.invoke(cmd, args);
   if (t && typeof t.invoke === "function") return t.invoke(cmd, args);
-  throw new Error("Tauri 接口不可用（请用 deskpet-tauri 打开本页）");
+  throw new Error("Tauri 接口不可用（请用 ZhiLing 打开本页）");
 }
 
 const $ = (id) => document.getElementById(id);

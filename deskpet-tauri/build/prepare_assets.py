@@ -213,8 +213,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--assets", action="store_true", help="只准备素材")
     ap.add_argument("--out", help="素材输出父目录：素材写到 <目录>/assets（通常传 exe 所在目录）；默认 <项目>/assets")
-    ap.add_argument("--packs", nargs="?", const=os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "DeskPet", "packs"),
-                    help="素材输出目录（packs 根，直接包含 themes/animations/active.json）；不带值时写 %%LOCALAPPDATA%%\\DeskPet\\packs")
+    ap.add_argument("--packs", nargs="?", const=os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "ZhiLing", "packs"),
+                    help="素材输出目录（packs 根，直接包含 themes/animations/active.json）；不带值时写 %%LOCALAPPDATA%%\\ZhiLing\\packs")
     args = ap.parse_args()
     if args.packs:
         ASSETS = os.path.abspath(args.packs)

@@ -509,10 +509,10 @@ async function envMap() {
   if (ENV_MAP) return ENV_MAP;
   const map = {};
   const info = await invoke("assets_info").catch(() => null);
-  // 只认 %LOCALAPPDATA%\DeskPet\packs 形态的候选，避免把用户自定义的 D:\DeskPet\packs 误当成 LOCALAPPDATA
-  const local = ((info && info.candidates) || []).find((p) => /\\AppData\\Local\\DeskPet\\packs$/i.test(p));
+  // 只认 %LOCALAPPDATA%\ZhiLing\packs 形态的候选，避免把用户自定义的 D:\ZhiLing\packs 误当成 LOCALAPPDATA
+  const local = ((info && info.candidates) || []).find((p) => /\\AppData\\Local\\ZhiLing\\packs$/i.test(p));
   if (local) {
-    const base = stripSlash(local.replace(/\\DeskPet\\packs$/i, ""));
+    const base = stripSlash(local.replace(/\\ZhiLing\\packs$/i, ""));
     map.LOCALAPPDATA = base;
     const m = base.match(/^(.*)\\AppData\\Local$/i);
     if (m) {
@@ -671,13 +671,13 @@ function markDirty() {
   DIRTY = true;
   $("saveBtn").disabled = false;
   setStatus("有未保存的配置改动", "warn");
-  document.title = "知灵桌宠 · 设置 *";
+  document.title = "智灵桌宠 · 设置 *";
 }
 
 function clearDirty() {
   DIRTY = false;
   $("saveBtn").disabled = true;
-  document.title = "知灵桌宠 · 设置";
+  document.title = "智灵桌宠 · 设置";
 }
 
 async function save() {
@@ -926,7 +926,7 @@ $("packsDir").addEventListener("input", (e) => {
   clearPacksMsg();
 });
 
-// 留空 = 按默认顺序解析（%LOCALAPPDATA%\DeskPet\packs → exe 同级 assets）
+// 留空 = 按默认顺序解析（%LOCALAPPDATA%\ZhiLing\packs → exe 同级 assets）
 $("resetPacks").addEventListener("click", () => {
   PACKS_VALUE = "";
   $("packsDir").value = "";

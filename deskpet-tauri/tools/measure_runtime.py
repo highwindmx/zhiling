@@ -6,7 +6,7 @@ Tauri 版会拉起一组 msedgewebview2 子进程，只量主进程会严重低�
 
 用法：
     python tools/measure_runtime.py --launch path\\to\\app.exe --name app --samples 12
-    python tools/measure_runtime.py --name deskpet-tauri --samples 12
+    python tools/measure_runtime.py --name ZhiLing --samples 12
     python tools/measure_runtime.py --pid 12345 --samples 12 --interval 0.5
     python tools/measure_runtime.py --launch ... --json out.json
 
@@ -157,7 +157,7 @@ def find_pid_by_name(name):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--name", help="进程名（如 deskpet-tauri / pythonw）")
+    ap.add_argument("--name", help="进程名（如 ZhiLing / pythonw）")
     ap.add_argument("--pid", type=int, help="直接给主进程 PID")
     ap.add_argument("--launch", default="", help="由本脚本启动目标程序并回收")
     ap.add_argument("--cwd", default="", help="--launch 时的工作目录")
