@@ -1,6 +1,6 @@
 ' Silent launcher for 智灵桌宠: no console window at all.
 ' Double-click this (or make a shortcut to it) instead of run.bat.
-' Arguments are forwarded, e.g:  wscript run.vbs --state-port 8765
+' Arguments are forwarded, e.g:  wscript run.vbs --state-port 8766
 Option Explicit
 Dim fso, sh, root, exe, cmd, i
 Set fso = CreateObject("Scripting.FileSystemObject")

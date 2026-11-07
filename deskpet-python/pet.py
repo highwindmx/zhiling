@@ -1518,7 +1518,8 @@ class StateIn:
                 s.listen(8)
                 s.settimeout(0.5)
             except OSError as e:
-                log("state_in=http 不可用（127.0.0.1:%d 绑定失败: %s），可改用 --state-file"
+                log("state_in=http 不可用（127.0.0.1:%d 绑定失败，端口可能被占用: %s）；"
+                    "可用 --state-port 换一个端口，或改用 --state-file"
                     % (self.port, e))
             else:
                 self.sock = s
@@ -1657,7 +1658,7 @@ PLAYER_CACHE_PX = 480      # 播放器帧缓存长边：只缓存当前段，按
 class BridgeAuto:
     """桌宠自带的 DSH 桥托管。
 
-    --state-port 默认 8765（启动即自动桥接）：若 55471 在监听（插件已跑）且还没有别的桥连着，
+    --state-port 默认 8766（启动即自动桥接）：若 55471 在监听（插件已跑）且还没有别的桥连着，
     就自动拉起 build/tools/dsh_bridge.py；子进程随桌宠退出一起清理，
     桥自身再用 --parent-pid 兜底，桌宠被强杀也不会留下孤儿。
     """
@@ -2993,7 +2994,8 @@ class SettingsDialog(QDialog):
             hint = "%d 上有别的服务，/health 不是本插件的响应" % ws_port
         elif not pet_up:
             color, title = self.LINK_RED, "桌宠状态入口不可用"
-            hint = "127.0.0.1:%d 绑定失败，桥的状态发不进来" % pet_port
+            hint = ("127.0.0.1:%d 绑定失败（端口可能被占用）；"
+                    "重启时用 --state-port 换一个端口" % pet_port)
         elif not bridge_up:
             color, title = self.LINK_AMBER, "插件在线 · 桥未接入"
             hint = "桌宠每 5s 自动重连；或手动跑 build/tools/dsh_bridge.py"

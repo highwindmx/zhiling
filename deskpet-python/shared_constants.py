@@ -37,4 +37,4 @@ BRIDGE_STREAMING_PRIORITY = 52 # 打字态优先级（高于 busy=50，保证真
 
 # ---- 默认端口（DSH WebSocket / 桌宠 /state HTTP）----
 DEFAULT_DSH_WS_PORT = 55471
-DEFAULT_STATE_PORT = 8765
+DEFAULT_STATE_PORT = 8766          # Python 版与 Tauri 版默认错开（Tauri 用 8765），可各自改

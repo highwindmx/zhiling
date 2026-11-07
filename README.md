@@ -61,7 +61,7 @@ deskpet-python\
 
 **状态入口 / DSH 链路**
 
--   HTTP：`POST http://127.0.0.1:8765/state`（`--state-port` 打开，`0` 关闭）；
+-   HTTP：`POST http://127.0.0.1:8766/state`（`--state-port` 打开，`0` 关闭）；
 -   状态文件：`--state-file <路径>`，内容变化才应用；
 -   DSH：默认在开端口时自动拉起 `build\tools\dsh_bridge.py`（订阅 `ws://127.0.0.1:55471` 广播 → POST `/state`），`--no-bridge` 可关；
 -   装 DSH 插件不是必需：也可由 DSH 侧自己发 HTTP / 写状态文件。
@@ -111,7 +111,7 @@ cargo build --release
 
 **怎么装**：DSH 设置 →「插件」→ 添加插件，箭头里选「安装第三方插件」，粘贴本机插件目录（如 `<仓库路径>\dsh-deskpet-bridge`；也接受 npm 包名或 Git 地址）。装完点「立即启用」，**重启 DSH Desktop** 才加载。端口默认 `55471`；要改就改插件配置的 `port`，并同步桥的 `--ws-port`。
 
-**对两版的作用**：把 DSH 的对话流、工具调用、审批与选择题状态转成桌宠状态（`busy`/`streaming`/`done`/`error`/`needs_decision`）。Python 版经 `build\tools\dsh_bridge.py` 中转，`run.vbs --state-port 8765` 启动（默认自动接、`--no-bridge` 则关闭）；Tauri 版内置客户端，设置 →「提醒与连接」的 DSH 端口填 `55471`（填`0` 关闭）。
+**对两版的作用**：把 DSH 的对话流、工具调用、审批与选择题状态转成桌宠状态（`busy`/`streaming`/`done`/`error`/`needs_decision`）。Python 版经 `build\tools\dsh_bridge.py` 中转，`run.vbs --state-port 8766` 启动（默认自动接、`--no-bridge` 则关闭）；Tauri 版内置客户端，设置 →「提醒与连接」的 DSH 端口填 `55471`（填`0` 关闭）。
 
 事件映射表、`/health` 字段、日志与排查细节见 [deskpet-python/README.md](deskpet-python/README.md) 的 4.2 节。
 

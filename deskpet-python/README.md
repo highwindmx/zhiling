@@ -122,7 +122,7 @@ uv run python pet.py --verbose --log %LOCALAPPDATA%\ZhiLing\pet.log   # 临时�
 | 其它非空值 | 当作日志文件路径并打开 |
 
 也可用 `--log <路径>` 或 `--verbose` 打开。打开后按大小轮转：单文件上限 **2 MB**，归档固定为 `pet.log.1`、只留 1 份，不按时间戳累积；轮转失败只告警一次，不影响主流程。托盘诊断（`[tray] …`）并入同一份日志，不再单独写 `pet_tray.log`；未捕获异常（含子线程）始终进日志。`run.vbs` 也支持参数：
-`wscript run.vbs --state-port 8765`。
+`wscript run.vbs --state-port 8766`。
 
 运行期行为要点：
 
@@ -167,7 +167,7 @@ uv run python pet.py --verbose --log %LOCALAPPDATA%\ZhiLing\pet.log   # 临时�
 
 ```powershell
 $env:DESKPET_LOG = "1"                 # 可选：排障时打开日志
-uv run python pet.py --state-port 8765
+uv run python pet.py --state-port 8766
 uv run python pet.py --state-file build\cache\state.json
 ```
 
@@ -175,15 +175,15 @@ uv run python pet.py --state-file build\cache\state.json
 
 ```powershell
 # PowerShell：流式输出 → 工作中；需要用户决策 → 举手
-Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8765/state -ContentType 'application/json' `
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8766/state -ContentType 'application/json' `
   -Body '{"state":"streaming","priority":30}'
-Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8765/state -ContentType 'application/json' `
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8766/state -ContentType 'application/json' `
   -Body '{"state":"needs_decision","priority":55,"timeoutSec":120}'
 ```
 
 ```javascript
 // Node 18+：同样的两个调用
-fetch("http://127.0.0.1:8765/state", {method: "POST", headers: {"Content-Type": "application/json"},
+fetch("http://127.0.0.1:8766/state", {method: "POST", headers: {"Content-Type": "application/json"},
        body: JSON.stringify({state: "streaming", priority: 30})});
 ```
 
@@ -203,8 +203,8 @@ DSH 真正在跑的时候，事件不是从桌宠这一端来的：仓库里的 
 
 ```powershell
 # 1) 桌宠开状态入口（run.vbs 无黑窗）
-wscript run.vbs --state-port 8765
-# 2) 桥：DSH 事件 → POST http://127.0.0.1:8765/state
+wscript run.vbs --state-port 8766
+# 2) 桥：DSH 事件 → POST http://127.0.0.1:8766/state
 .venv\Scripts\python.exe build\tools\dsh_bridge.py
 # 3) 先确认两端在不在（不改任何状态）
 .venv\Scripts\python.exe build\tools\dsh_bridge.py --probe
@@ -255,7 +255,7 @@ wscript run.vbs --state-port 8765
 | 现象 | 先查什么 |
 | --- | --- |
 | `55471` 没监听 | 插件没加载：看 profile 登记与插件日志 `build\cache\dsh_bridge_plugin.log`（`DESHPET_PLUGIN_LOG` 可改路径；超 1MB 清空重写） |
-| 端口在监听但桌宠不动 | `dsh_bridge.py --probe`：分别打印 55471 与 8765 两端状态，并读插件 `/health` |
+| 端口在监听但桌宠不动 | `dsh_bridge.py --probe`：分别打印 55471 与 8766 两端状态，并读插件 `/health` |
 | 不确定 DSH 有没有广播 | `dsh_bridge.py --selftest 20`：连 20 秒，打印事件条数与类型分布 |
 | 想看原始事件 | 桥日志 `build\cache\dsh_bridge.log`（保留最近 400 行，token 正文不落盘） |
 
@@ -329,7 +329,7 @@ priority 就是这时候的排队规则：数值大的先播、小的被拒且**
   启动多个 pet.py 会在日志里出现 `WARN another pet instance`，先退出多余的实例。
 - **双击 run.bat 闪黑窗**：bat 自身必然创建 cmd 窗口（本机实测约 0.45–0.85s），改用 `run.vbs`（wscript 隐藏启动，无任何窗口）。
 - **DSH 在跑但桌宠不动**：桌宠默认不订阅 DSH。先 `dsh_bridge.py --probe`：55471 未监听 = 插件没加载，
-  8765 未监听 = 桌宠没带 `--state-port`；两者都在再启动 `dsh_bridge.py`（见 §4.2）。
+  8766 未监听 = 桌宠没带 `--state-port`；两者都在再启动 `dsh_bridge.py`（见 §4.2）。
 - **黑窗 / 没有素材**：`packs\active.json` 指的 pack 不存在，或 `frames\` 缺失；看 `--verbose` 输出。
 - **改了 `active.json` 不生效**：主题切换只在启动时读取，必须重启；`themes\<id>.json` 才会热加载。
 - **`.venv` 被占用**：先退出正在跑的桌宠，再 `uv sync`。

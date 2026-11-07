@@ -2,7 +2,7 @@
 
 前置条件：
   1. DSH 里已安装并启用 @local/dsh-deskpet-bridge（它在 ws://127.0.0.1:55471 广播事件）；
-  2. 桌宠带 --state-port 8765 启动（pet.py --state-port 8765；pet.py 会自动拉起本脚本）；
+  2. 桌宠带 --state-port 8766 启动（pet.py --state-port 8766；pet.py 会自动拉起本脚本）；
   3. 也可手动常驻：.venv\\Scripts\\python.exe build\\tools\\dsh_bridge.py --verbose
 
 事件映射（DSH 事件流 v2 → 主题映射 themes/<id>.json 的状态名）：
@@ -22,7 +22,7 @@
   welcome / pong                 -> 忽略
 
 排障：
-  --probe     只探测 55471 与 8765 是否监听，并读插件 /health
+  --probe     只探测 55471 与 8766 是否监听，并读插件 /health
   --selftest  连 55471，等 N 秒，打印收到的事件条数与示例（判断 DSH 到底有没有在说话）
   --verbose   把收到的原始事件（前 200 字符，token 不记正文）写进 dsh_bridge.log
 只连本机回环，不监听端口，不引入第三方依赖。
