@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Desktop Pet Bridge",
+    "description": "Exposes a local WebSocket bridge so a desktop pet app can feed text into the DSH dialog and receive the assistant stream to drive pet animations."
+  }
+}
