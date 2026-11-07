@@ -7,6 +7,16 @@
 
 两版共享同一份用户配置（`%LOCALAPPDATA%\ZhiLing\config.json`）、同一个素材目录（`%LOCALAPPDATA%\ZhiLing\packs`）与同一套主题/状态语义。
 
+## 界面预览
+
+| 桌宠桌面效果 | 桌宠设置 · 状态与动画 | 素材工坊 |
+| --- | --- | --- |
+| <img src="images/desktop-pet.png" width="260" alt="桌宠桌面效果"> | <img src="images/settings-state-animation.png" width="260" alt="桌宠设置 · 状态与动画"> | <img src="images/workshop-keyer.png" width="260" alt="素材工坊"> |
+
+- **桌宠桌面效果**：透明窗口的小女仆立在桌面右下角，不抢焦点，跟随对话状态播放动画。
+- **桌宠设置 · 状态与动画**：左栏编排状态列表（可拖拽 / 上移下移 / 勾选启用），右栏编排每段动画并实时预览。
+- **素材工坊**：导入绿幕视频 → 自动 / 手动抠像（原图 / 抠图后 / alpha 三视图实时预览）→ 导出为透明 WebP 帧序列。
+
 ## 素材来源与工作流
 
 素材来自 **即梦 AI / MiniMax Design 生成的绿幕短视频**。整条链路是因果关系，不是功能罗列：
